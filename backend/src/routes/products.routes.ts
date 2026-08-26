@@ -1,0 +1,24 @@
+import { Router } from "express";
+import { authenticate, requireRole } from "../middleware/auth";
+import {
+  getProducts,
+  getProductById,
+  getCategories,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+} from "../controllers/products.controller";
+
+const router = Router();
+
+// Public protected routes
+router.get("/", authenticate, getProducts);
+router.get("/categories", authenticate, getCategories);
+router.get("/:id", authenticate, getProductById);
+
+// Admin/Store Manager routes
+router.post("/", authenticate, requireRole("ADMIN", "STORE_MANAGER"), createProduct);
+router.patch("/:id", authenticate, requireRole("ADMIN", "STORE_MANAGER"), updateProduct);
+router.delete("/:id", authenticate, requireRole("ADMIN"), deleteProduct);
+
+export default router;

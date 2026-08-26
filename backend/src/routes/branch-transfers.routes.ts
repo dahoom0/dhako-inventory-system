@@ -1,0 +1,25 @@
+import { Router } from "express";
+import { authenticate, requireRole } from "../middleware/auth";
+import {
+  createBranchTransfer,
+  getBranchTransfers,
+  getBranchTransferById,
+  advanceBranchTransferStatus,
+} from "../controllers/branch-transfers.controller";
+
+const router = Router();
+
+// Everyone can view branch transfers
+router.get("/", authenticate, getBranchTransfers);
+router.get("/:transferId", authenticate, getBranchTransferById);
+
+// Store Manager and Admin can create and manage branch transfers
+router.post("/", authenticate, requireRole("ADMIN", "STORE_MANAGER"), createBranchTransfer);
+router.post(
+  "/:transferId/advance",
+  authenticate,
+  requireRole("ADMIN", "STORE_MANAGER"),
+  advanceBranchTransferStatus
+);
+
+export default router;

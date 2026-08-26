@@ -1,0 +1,236 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import 'tailwindcss';
+
+@theme inline {
+  --color-background: #f0f4ff;
+  --color-foreground: #0f172a;
+  --color-card: #ffffff;
+  --color-card-foreground: #0f172a;
+  --color-primary: #1e3a8a;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #dbeafe;
+  --color-secondary-foreground: #1e40af;
+  --color-muted: #f1f5f9;
+  --color-muted-foreground: #64748b;
+  --color-accent: #2563eb;
+  --color-accent-foreground: #ffffff;
+  --color-border: #e2e8f0;
+  --color-ring: #2563eb;
+  --color-destructive: #dc2626;
+  --color-warning: #d97706;
+  --color-success: #16a34a;
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --radius: 0.5rem;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  background: #f0f4ff;
+  color: #0f172a;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-mono { font-family: 'JetBrains Mono', monospace; }
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+select option { background: white; color: #0f172a; }
+
+
+/* ── Print Styles ── */
+@media print {
+  /* Hide sidebar and navigation */
+  .sidebar,
+  [class*="sidebar"],
+  nav,
+  [role="navigation"],
+  .no-print,
+  button,
+  .btn,
+  [class*="button"] {
+    display: none !important;
+  }
+
+  /* Page setup */
+  body, html, #root {
+    background: white;
+    color: black;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Typography */
+  body {
+    font-size: 11pt;
+    line-height: 1.5;
+    font-family: Arial, sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    page-break-after: avoid;
+    margin-bottom: 0.5cm;
+    color: black;
+  }
+
+  /* Tables - printer friendly */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.5cm 0;
+    page-break-inside: avoid;
+  }
+
+  thead {
+    background: #f5f5f5 !important;
+    color: black !important;
+    display: table-header-group;
+    page-break-inside: avoid;
+  }
+
+  th, td {
+    border: 1px solid #333;
+    padding: 0.3cm;
+    text-align: left;
+    page-break-inside: avoid;
+  }
+
+  th {
+    background: #f5f5f5 !important;
+    color: black !important;
+    font-weight: bold;
+  }
+
+  tr {
+    page-break-inside: avoid;
+  }
+
+  tbody tr:nth-child(even) {
+    background: white;
+  }
+
+  /* Cards */
+  [class*="card"] {
+    page-break-inside: avoid;
+    border: 1px solid #999;
+    margin: 0.5cm 0;
+    padding: 0.5cm;
+    background: white;
+  }
+
+  /* Remove backgrounds and make text visible */
+  * {
+    background: white !important;
+    color: black !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* Links */
+  a {
+    color: black;
+    text-decoration: underline;
+  }
+
+  /* Header info */
+  .print-header {
+    page-break-after: avoid;
+    margin-bottom: 1cm;
+    padding-bottom: 0.5cm;
+    border-bottom: 2px solid #333;
+  }
+
+  .print-header h1 {
+    margin: 0 0 0.2cm 0;
+    font-size: 18pt;
+  }
+
+  .print-header p {
+    margin: 0;
+    font-size: 10pt;
+    color: #666;
+  }
+
+  /* Footer */
+  @page {
+    margin: 1cm;
+  }
+
+  .print-footer {
+    margin-top: 1cm;
+    padding-top: 0.5cm;
+    border-top: 1px solid #ddd;
+    text-align: center;
+    font-size: 9pt;
+    color: #666;
+  }
+
+  /* Badges and status indicators */
+  .badge,
+  [class*="badge"],
+  [class*="status"] {
+    border: 1px solid #333;
+    padding: 0.2cm 0.3cm;
+  }
+
+  /* Charts - hide them in print */
+  canvas,
+  svg {
+    display: none !important;
+  }
+
+  /* Forms - hide input elements */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  select,
+  textarea {
+    border: 1px solid #999;
+    background: white;
+    padding: 0.2cm;
+  }
+
+  /* Spacing optimizations */
+  .space-x-2, .space-x-3, .space-x-4,
+  .space-y-2, .space-y-3, .space-y-4,
+  .gap-2, .gap-3, .gap-4 {
+    gap: 0.3cm;
+  }
+
+  /* Hide empty elements */
+  .hidden,
+  [hidden] {
+    display: none !important;
+  }
+}
+
+/* Print button styling */
+.print-btn {
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+/* Print-only content */
+.print-only {
+  display: none;
+}
+
+@media print {
+  .print-only {
+    display: block;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}
