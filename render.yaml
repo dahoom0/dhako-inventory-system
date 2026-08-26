@@ -1,7 +1,7 @@
 services:
   - type: web
     name: dhako-backend
-    runtime: node
+    env: node
     plan: free
     buildCommand: cd backend && npm install && npm run build
     startCommand: cd backend && npm start
@@ -19,14 +19,15 @@ services:
       - key: PORT
         value: 10000
 
-  - type: staticSite
+  - type: web
     name: dhako-frontend
+    env: static
+    plan: free
     buildCommand: VITE_API_URL=https://dhako-backend.onrender.com pnpm install && pnpm build
-    staticPublishPath: dist
+    staticPublishPath: ./dist
 
 databases:
   - name: dhako-db
     databaseName: dhako
     user: dhako_user
     plan: free
-    version: "15"
