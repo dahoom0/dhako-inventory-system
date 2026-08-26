@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from "react";
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+
 export type UserRole = "ADMIN" | "INVENTORY_MANAGER" | "BRANCH_MANAGER" | "BRANCH_STAFF";
 
 export interface Location {
