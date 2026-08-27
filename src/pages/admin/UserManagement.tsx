@@ -19,7 +19,7 @@ const UserManagement: React.FC = () => {
     email: "",
     password: "",
     role: "BRANCH_MANAGER",
-    locationId: "",
+    locationId: undefined,
   });
 
   useEffect(() => {
@@ -58,7 +58,7 @@ const UserManagement: React.FC = () => {
       } else {
         await createUser(formData);
       }
-      setFormData({ name: "", email: "", password: "", role: "BRANCH_MANAGER" });
+      setFormData({ name: "", email: "", password: "", role: "BRANCH_MANAGER", locationId: undefined });
       setEditingUser(null);
       setShowForm(false);
       await fetchUsers();
@@ -93,7 +93,7 @@ const UserManagement: React.FC = () => {
   const handleCancel = () => {
     setShowForm(false);
     setEditingUser(null);
-    setFormData({ name: "", email: "", password: "", role: "BRANCH_MANAGER" });
+    setFormData({ name: "", email: "", password: "", role: "BRANCH_MANAGER", locationId: undefined });
     setFormError("");
   };
 

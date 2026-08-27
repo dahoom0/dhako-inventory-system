@@ -133,9 +133,23 @@ export const authApi = {
 export const userApi = {
   getUsers: () => api.get<any[]>('/auth/users'),
   
-  createUser: (userData: any) => api.post<any>('/auth/register', userData),
+  createUser: (userData: any) => {
+    // Remove empty locationId before sending
+    const cleanData = { ...userData };
+    if (!cleanData.locationId) {
+      delete cleanData.locationId;
+    }
+    return api.post<any>('/auth/register', cleanData);
+  },
   
-  updateUser: (id: string, userData: any) => api.put<any>(`/auth/users/${id}`, userData),
+  updateUser: (id: string, userData: any) => {
+    // Remove empty locationId before sending
+    const cleanData = { ...userData };
+    if (!cleanData.locationId) {
+      delete cleanData.locationId;
+    }
+    return api.put<any>(`/auth/users/${id}`, cleanData);
+  },
   
   deleteUser: (id: string) => api.delete(`/auth/users/${id}`),
 };
