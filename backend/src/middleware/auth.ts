@@ -26,18 +26,3 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
     res.status(401).json({ success: false, error: "Invalid or expired token" });
   }
 }
-
-export function requireRole(...allowedRoles: string[]) {
-  return (req: AuthRequest, res: Response, next: NextFunction) => {
-    if (!req.user) {
-      res.status(401).json({ success: false, error: "Not authenticated" });
-      return;
-    }
-    if (!allowedRoles.includes(req.user.role)) {
-      res.status(403).json({ success: false, error: "Insufficient permissions" });
-      return;
-    }
-    next();
-  };
-}
-

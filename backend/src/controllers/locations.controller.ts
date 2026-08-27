@@ -243,7 +243,13 @@ export const getLocationStats = async (req: Request, res: Response) => {
       [id]
     );
 
-    const stats: any = {
+    const stats: {
+      totalProducts: number;
+      totalCtns: number;
+      totalUnits: number;
+      inventoryValue: number;
+      recentTransactions?: number;
+    } = {
       totalProducts: parseInt(invResult.rows[0].total_products),
       totalCtns: parseInt(invResult.rows[0].total_ctns),
       totalUnits: parseInt(invResult.rows[0].total_units),

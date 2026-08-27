@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { authenticate, requireRole } from "../middleware/auth";
+import { authenticate } from "../middleware/auth";
+import { requireRole } from "../middleware/rbac";
 import {
   getLocations,
   getLocationById,
