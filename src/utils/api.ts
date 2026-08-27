@@ -22,6 +22,46 @@ export class ApiError extends Error {
 }
 
 /**
+ * UUID validation and debugging utilities
+ */
+export const uuidUtils = {
+  // Validate UUID format
+  isValidUUID: (uuid: string): boolean => {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(uuid);
+  },
+  
+  // Validate array of UUIDs
+  areValidUUIDs: (uuids: string[]): { valid: boolean; invalidUUIDs: string[] } => {
+    const invalidUUIDs = uuids.filter(uuid => !uuidUtils.isValidUUID(uuid));
+    return {
+      valid: invalidUUIDs.length === 0,
+      invalidUUIDs
+    };
+  },
+  
+  // Debug location data
+  debugLocationData: (locations: any[], selectedIds: string[]) => {
+    console.log('🔍 UUID Validation Debug:');
+    console.log('📍 Available locations:', locations.map(loc => ({
+      id: loc.id,
+      name: loc.name,
+      isValidUUID: uuidUtils.isValidUUID(loc.id)
+    })));
+    
+    const validation = uuidUtils.areValidUUIDs(selectedIds);
+    console.log('✅ Selected location IDs:', selectedIds);
+    console.log('🎯 UUID Validation:', validation);
+    
+    if (!validation.valid) {
+      console.error('❌ Invalid UUIDs detected:', validation.invalidUUIDs);
+    }
+    
+    return validation;
+  }
+};
+
+/**
  * Generic fetch wrapper with authentication and error handling
  */
 async function apiRequest<T = any>(
@@ -42,14 +82,31 @@ async function apiRequest<T = any>(
   const url = `${API_BASE_URL}/api/v1${endpoint}`;
   
   try {
+    console.log(`🌐 API Request: ${options.method || 'GET'} ${url}`);
+    if (options.body) {
+      console.log('📤 Request Body:', JSON.parse(options.body as string));
+    }
+
     const response = await fetch(url, {
       ...options,
       headers,
     });
 
     const data: ApiResponse<T> = await response.json();
+    
+    console.log(`📥 API Response (${response.status}):`, data);
 
     if (!response.ok) {
+      // Enhanced error logging for validation errors
+      if (response.status === 400 && data.details) {
+        console.error('🚨 Validation Error Details:', data.details);
+        console.error('🔍 Request that caused error:', {
+          url,
+          method: options.method,
+          body: options.body ? JSON.parse(options.body as string) : null
+        });
+      }
+      
       throw new ApiError(
         response.status,
         data.error || data.message || 'API request failed',
@@ -72,6 +129,7 @@ async function apiRequest<T = any>(
     }
     
     if (error instanceof Error) {
+      console.error('🔥 Network Error:', error.message);
       throw new ApiError(0, `Network error: ${error.message}`);
     }
     
@@ -136,37 +194,86 @@ export const userApi = {
   getUserLocations: (id: string) => api.get<any>(`/auth/users/${id}/locations`),
   
   createUser: (userData: any) => {
-    // Clean data before sending
-    const cleanData = { ...userData };
+    console.log("🚀 === USER CREATION DIAGNOSTIC START ===");
     
-    console.log("🔍 API createUser - Original data:", userData);
+    // Step 1: Log original data
+    console.log("📋 Original user data:", userData);
+    
+    // Step 2: Validate input data structure
+    const requiredFields = ['name', 'email', 'password', 'role'];
+    const missingFields = requiredFields.filter(field => !userData[field]);
+    if (missingFields.length > 0) {
+      console.error("❌ Missing required fields:", missingFields);
+      throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+    }
+    
+    // Step 3: Clean and validate data
+    const cleanData = { ...userData };
     
     // Remove null/undefined/empty values
     if (!cleanData.locationId) delete cleanData.locationId;
     
-    // For INVENTORY_MANAGER, ensure locationIds is sent as array
+    // Step 4: Role-based location validation
     if (cleanData.role === "INVENTORY_MANAGER") {
+      console.log("🏭 Processing INVENTORY_MANAGER location assignment...");
+      
       if (cleanData.locationIds && Array.isArray(cleanData.locationIds) && cleanData.locationIds.length > 0) {
-        // Keep locationIds as array
-        console.log("🔍 INVENTORY_MANAGER - Using locationIds array:", cleanData.locationIds);
+        // Validate UUIDs in locationIds
+        const validation = uuidUtils.areValidUUIDs(cleanData.locationIds);
+        console.log("🔍 LocationIds UUID validation:", validation);
+        
+        if (!validation.valid) {
+          console.error("❌ Invalid UUIDs in locationIds:", validation.invalidUUIDs);
+          throw new Error(`Invalid location UUIDs: ${validation.invalidUUIDs.join(', ')}`);
+        }
+        
+        console.log("✅ Using locationIds array:", cleanData.locationIds);
       } else if (cleanData.locationId) {
         // Convert single locationId to locationIds
+        if (!uuidUtils.isValidUUID(cleanData.locationId)) {
+          console.error("❌ Invalid UUID in locationId:", cleanData.locationId);
+          throw new Error(`Invalid location UUID: ${cleanData.locationId}`);
+        }
+        
         cleanData.locationIds = [cleanData.locationId];
         delete cleanData.locationId;
-        console.log("🔍 INVENTORY_MANAGER - Converted locationId to locationIds:", cleanData.locationIds);
+        console.log("🔄 Converted locationId to locationIds:", cleanData.locationIds);
       } else {
-        // No location assigned, delete both
+        // No location assigned
         delete cleanData.locationIds;
-        console.log("🔍 INVENTORY_MANAGER - No locations assigned");
+        console.log("⚠️ No locations assigned for INVENTORY_MANAGER");
       }
-    }
-    
-    // For other roles, use locationId
-    if (cleanData.role === "BRANCH_MANAGER" && !cleanData.locationId) {
+    } else if (cleanData.role === "BRANCH_MANAGER") {
+      console.log("🏪 Processing BRANCH_MANAGER location assignment...");
+      
+      if (cleanData.locationId && !uuidUtils.isValidUUID(cleanData.locationId)) {
+        console.error("❌ Invalid UUID in locationId:", cleanData.locationId);
+        throw new Error(`Invalid location UUID: ${cleanData.locationId}`);
+      }
+      
+      // Remove locationIds for branch manager
+      if (cleanData.locationIds) {
+        delete cleanData.locationIds;
+        console.log("🗑️ Removed locationIds for BRANCH_MANAGER");
+      }
+    } else {
+      console.log("👑 Processing ADMIN - no location restrictions");
+      // For ADMIN, remove location fields
+      delete cleanData.locationId;
       delete cleanData.locationIds;
     }
     
-    console.log("🔍 API createUser - Final clean data:", cleanData);
+    // Step 5: Final validation and logging
+    console.log("📋 Final clean data:", cleanData);
+    console.log("🎯 Final data validation:");
+    Object.keys(cleanData).forEach(key => {
+      const value = cleanData[key];
+      console.log(`  ${key}: ${typeof value} = ${JSON.stringify(value)}`);
+    });
+    
+    console.log("🚀 === USER CREATION DIAGNOSTIC END ===");
+    
+    // Step 6: Make API call
     return api.post<any>('/auth/register', cleanData);
   },
   

@@ -169,7 +169,11 @@ const UserManagement: React.FC = () => {
                 label="Download Users"
                 onExport={handleExportUsers}
               />
-              <Btn onClick={() => setShowForm(true)} variant="primary">
+              <Btn onClick={() => {
+                console.log('🔥 Create User button clicked!');
+                setShowForm(true);
+                console.log('🔥 showForm set to true');
+              }} variant="primary">
                 + Create New User
               </Btn>
             </div>
@@ -186,6 +190,9 @@ const UserManagement: React.FC = () => {
       {/* User Form */}
       {showForm && (
         <Card className="p-6 border-2 border-blue-400 bg-gradient-to-br from-blue-50 to-white">
+          <div style={{border: '2px solid red', padding: '10px', backgroundColor: 'yellow'}}>
+            <h2>🚨 DEBUG: FORM IS RENDERING - showForm = {showForm.toString()}</h2>
+          </div>
           <h3 className="text-xl font-bold text-gray-800 mb-1">
             {editingUser ? "✏️ Edit User" : "➕ Create New User"}
           </h3>
@@ -249,11 +256,15 @@ const UserManagement: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Role / Permission *</label>
+                <div style={{border: '3px solid green', padding: '5px', backgroundColor: 'lightgreen'}}>
+                  <p>🚨 DEBUG: Role dropdown is here - current value: {formData.role}</p>
+                </div>
                 <select
                   name="role"
                   value={formData.role}
                   onChange={handleFormChange}
                   className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium"
+                  style={{border: '3px solid blue', backgroundColor: 'lightblue'}}
                 >
                   <option value="ADMIN">🔐 Admin - Full System Access</option>
                   <option value="INVENTORY_MANAGER">📦 Inventory Manager - Warehouse Management</option>
