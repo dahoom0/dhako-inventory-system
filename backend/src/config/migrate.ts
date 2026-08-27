@@ -12,9 +12,9 @@ const pool = new Pool({
 });
 
 async function migrate() {
-  // Use process.cwd() to get the backend directory
-  // Render deploys the full repo, so src/models/schema.sql will be present
-  const schemaPath = path.join(process.cwd(), "src/models/schema.sql");
+  // schema.sql is copied to dist/models/ during the build process
+  // __dirname = dist/config, so ../models/schema.sql resolves to dist/models/schema.sql
+  const schemaPath = path.join(__dirname, "../models/schema.sql");
   
   console.log(`Reading schema from: ${schemaPath}`);
   
