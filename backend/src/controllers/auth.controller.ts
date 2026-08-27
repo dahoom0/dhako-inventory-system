@@ -12,8 +12,12 @@ const loginSchema = z.object({
 const registerSchema = loginSchema.extend({
   name: z.string().min(2),
   role: z.enum(["ADMIN", "INVENTORY_MANAGER", "BRANCH_MANAGER", "BRANCH_STAFF"]),
-  locationId: z.string().uuid().nullable().optional(),
-});
+  locationId: z.string().uuid().nullable().optional().or(z.literal("")),
+})
+  .transform((data) => ({
+    ...data,
+    locationId: data.locationId === "" ? null : data.locationId,
+  }));
 
 export async function login(req: Request, res: Response) {
   try {
