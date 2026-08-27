@@ -12,7 +12,18 @@ const pool = new Pool({
 });
 
 async function migrate() {
-  const schemaPath = path.join(__dirname, "../models/schema.sql");
+  // Point to source schema file, not dist
+  // In production: __dirname = /opt/render/project/src/backend/dist/config
+  // We need: /opt/render/project/src/backend/src/models/schema.sql
+  // So: ../../src/models/schema.sql
+  const schemaPath = path.join(__dirname, "../../src/models/schema.sql");
+  
+  console.log(`Reading schema from: ${schemaPath}`);
+  
+  if (!fs.existsSync(schemaPath)) {
+    throw new Error(`Schema file not found at: ${schemaPath}`);
+  }
+  
   const sql = fs.readFileSync(schemaPath, "utf-8");
   
   // Split the SQL into individual statements
