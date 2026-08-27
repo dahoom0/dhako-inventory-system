@@ -139,6 +139,8 @@ export const userApi = {
     // Clean data before sending
     const cleanData = { ...userData };
     
+    console.log("🔍 API createUser - Original data:", userData);
+    
     // Remove null/undefined/empty values
     if (!cleanData.locationId) delete cleanData.locationId;
     
@@ -146,13 +148,16 @@ export const userApi = {
     if (cleanData.role === "INVENTORY_MANAGER") {
       if (cleanData.locationIds && Array.isArray(cleanData.locationIds) && cleanData.locationIds.length > 0) {
         // Keep locationIds as array
+        console.log("🔍 INVENTORY_MANAGER - Using locationIds array:", cleanData.locationIds);
       } else if (cleanData.locationId) {
         // Convert single locationId to locationIds
         cleanData.locationIds = [cleanData.locationId];
         delete cleanData.locationId;
+        console.log("🔍 INVENTORY_MANAGER - Converted locationId to locationIds:", cleanData.locationIds);
       } else {
         // No location assigned, delete both
         delete cleanData.locationIds;
+        console.log("🔍 INVENTORY_MANAGER - No locations assigned");
       }
     }
     
@@ -161,7 +166,7 @@ export const userApi = {
       delete cleanData.locationIds;
     }
     
-    console.log("Creating user with data:", cleanData);
+    console.log("🔍 API createUser - Final clean data:", cleanData);
     return api.post<any>('/auth/register', cleanData);
   },
   

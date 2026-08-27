@@ -4,6 +4,7 @@ import { useLocations } from "@/context/LocationContext";
 import { PageHeader, Btn, Card } from "@/components/ui";
 import { PrintButton } from "@/components/PrintButton";
 import { exportUsersToExcel } from "@/utils/excelExport";
+import { userApi } from "@/utils/api";
 
 const UserManagement: React.FC = () => {
   const { createUser, updateUser, deleteUser, getUsers, error } = useAuth();
@@ -48,6 +49,10 @@ const UserManagement: React.FC = () => {
     e.preventDefault();
     setFormError("");
 
+    // DEBUG: Log the form data being submitted
+    console.log("🔍 Form submission data:", formData);
+    console.log("🔍 Available locations:", locations);
+
     // Validate password for new users
     if (!editingUser && formData.password && formData.password.length < 6) {
       setFormError("Password must be at least 6 characters");
@@ -67,8 +72,10 @@ const UserManagement: React.FC = () => {
 
     try {
       if (editingUser) {
+        console.log("🔄 Updating user:", editingUser.id, formData);
         await updateUser(editingUser.id, formData);
       } else {
+        console.log("➕ Creating new user:", formData);
         await createUser(formData);
       }
       setFormData({ name: "", email: "", password: "", role: "BRANCH_MANAGER", locationId: undefined, locationIds: [] });
@@ -76,6 +83,7 @@ const UserManagement: React.FC = () => {
       setShowForm(false);
       await fetchUsers();
     } catch (err) {
+      console.error("❌ Form submission error:", err);
       setFormError(err instanceof Error ? err.message : "Operation failed");
     }
   };
