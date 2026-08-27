@@ -20,6 +20,7 @@ const UserManagement: React.FC = () => {
     password: "",
     role: "BRANCH_MANAGER",
     locationId: undefined,
+    locationIds: [],
   });
 
   useEffect(() => {
