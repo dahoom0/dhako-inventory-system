@@ -47,8 +47,15 @@ const UserManagement: React.FC = () => {
     e.preventDefault();
     setFormError("");
 
+    // Validate password for new users
     if (!editingUser && formData.password && formData.password.length < 6) {
       setFormError("Password must be at least 6 characters");
+      return;
+    }
+
+    // Validate locationId requirement based on role
+    if ((formData.role === "BRANCH_MANAGER" || formData.role === "INVENTORY_MANAGER") && !formData.locationId) {
+      setFormError(`${formData.role === "BRANCH_MANAGER" ? "Branch" : "Warehouse"} assignment is required for this role`);
       return;
     }
 
