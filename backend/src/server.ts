@@ -13,7 +13,7 @@ app.use(cors({ origin: env.frontendUrl, credentials: true }));
 app.use(morgan(env.nodeEnv === "production" ? "combined" : "dev"));
 app.use(express.json());
 
-app.get("/health", (_req, res) => res.json({ status: "ok", timestamp: new Date() }));
+app.get("/health", (_req: express.Request, res: express.Response) => res.json({ status: "ok", timestamp: new Date() }));
 app.use("/api/v1", routes);
 
 // Global error handler
