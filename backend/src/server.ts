@@ -18,8 +18,18 @@ app.use("/api/v1", routes);
 
 // Global error handler
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error(err);
-  res.status(500).json({ success: false, error: "Internal server error" });
+  console.error("Error:", err);
+  
+  // Return appropriate error response
+  if (res.headersSent) {
+    return;
+  }
+  
+  res.status(500).json({ 
+    success: false, 
+    error: "Internal server error",
+    ...(env.nodeEnv === "development" && { details: err.message })
+  });
 });
 
 app.listen(env.port, () => {

@@ -19,7 +19,7 @@ CREATE TABLE users (
   name          TEXT NOT NULL,
   email         TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
-  role          TEXT NOT NULL CHECK (role IN ('ADMIN','STORE_MANAGER','BRANCH_MANAGER','BRANCH_STAFF')),
+  role          TEXT NOT NULL CHECK (role IN ('ADMIN','INVENTORY_MANAGER','BRANCH_MANAGER','BRANCH_STAFF')),
   location_id   UUID REFERENCES locations(id),  -- NULL = Admin
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()

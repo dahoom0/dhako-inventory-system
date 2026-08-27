@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from "react";
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+import { authApi, userApi, ApiError } from "../utils/api";
 
 export type UserRole = "ADMIN" | "INVENTORY_MANAGER" | "BRANCH_MANAGER" | "BRANCH_STAFF";
 
@@ -47,25 +46,64 @@ export interface CreateUserData {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Helper function to determine accessible locations based on role
+const getDefaultAccessibleLocations = (role: string): string[] => {
+  switch (role) {
+    case "ADMIN":
+      return ["w1", "w2", "w3", "b1", "b2", "b3"]; // All locations
+    case "INVENTORY_MANAGER":
+      return ["w1", "w2", "w3", "b1", "b2", "b3"]; // Can manage transfers to all branches
+    case "BRANCH_MANAGER":
+      return ["b1"]; // Single branch (this should come from backend)
+    case "BRANCH_STAFF":
+      return ["b1"]; // Single branch (this should come from backend)
+    default:
+      return [];
+  }
+};
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<User[]>([]);
 
-  // Initialize auth state from localStorage on mount
+  // Initialize auth state from localStorage and fetch current user from API
   useEffect(() => {
-    const token = localStorage.getItem("authToken");
-    const userData = localStorage.getItem("user");
-    if (token && userData) {
-      try {
-        setUser(JSON.parse(userData));
-      } catch (e) {
-        localStorage.removeItem("authToken");
-        localStorage.removeItem("user");
+    const initializeAuth = async () => {
+      const token = localStorage.getItem("authToken");
+      const storedUser = localStorage.getItem("user");
+      
+      if (token && storedUser) {
+        try {
+          // Try to fetch current user from API to verify token is still valid
+          const response = await authApi.getCurrentUser();
+          const backendUser = response;
+          
+          // Convert backend user to frontend format
+          const user: User = {
+            id: backendUser.id,
+            name: backendUser.name,
+            email: backendUser.email,
+            role: backendUser.role as UserRole,
+            accessibleLocations: getDefaultAccessibleLocations(backendUser.role),
+            createdAt: backendUser.created_at || new Date().toISOString(),
+          };
+          
+          setUser(user);
+          // Update localStorage with fresh user data
+          localStorage.setItem("user", JSON.stringify(user));
+        } catch (error) {
+          // Token is invalid or API call failed
+          console.error("Failed to validate auth token:", error);
+          localStorage.removeItem("authToken");
+          localStorage.removeItem("user");
+        }
       }
-    }
-    setIsLoading(false);
+      setIsLoading(false);
+    };
+
+    initializeAuth();
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
@@ -73,51 +111,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setError(null);
       setIsLoading(true);
 
-      // Mock login with location assignment based on role
-      let mockUser: User | null = null;
-
-      if (email === "admin@dhako.com" && password === "admin123") {
-        // ADMIN can see all locations
-        mockUser = {
-          id: "1",
-          name: "Admin User",
-          email: "admin@dhako.com",
-          role: "ADMIN",
-          accessibleLocations: ["w1", "w2", "w3", "b1", "b2", "b3"], // All warehouses and branches
-          createdAt: new Date().toISOString(),
-        };
-      } else if (email === "inventory@dhako.com" && password === "inventory123") {
-        // INVENTORY_MANAGER assigned to warehouses
-        mockUser = {
-          id: "2",
-          name: "Inventory Manager",
-          email: "inventory@dhako.com",
-          role: "INVENTORY_MANAGER",
-          locationId: "w1", // Primary warehouse
-          accessibleLocations: ["w1", "w2", "w3", "b1", "b2", "b3"], // Can manage transfers to all branches
-          createdAt: new Date().toISOString(),
-        };
-      } else if (email === "branch@dhako.com" && password === "branch123") {
-        // BRANCH_MANAGER assigned to single branch
-        mockUser = {
-          id: "3",
-          name: "Branch Manager - Mogadishu",
-          email: "branch@dhako.com",
-          role: "BRANCH_MANAGER",
-          locationId: "b1", // Assigned branch
-          accessibleLocations: ["b1"], // Can only see this branch
-          createdAt: new Date().toISOString(),
-        };
-      }
-
-      if (!mockUser) {
-        throw new Error("Invalid credentials");
-      }
-
-      // Store auth data
-      localStorage.setItem("authToken", "mock-token-" + Date.now());
-      localStorage.setItem("user", JSON.stringify(mockUser));
-      setUser(mockUser);
+      // Real API call to backend
+      const response = await authApi.login(email, password);
+      
+      // Store auth data from API response
+      localStorage.setItem("authToken", response.token);
+      localStorage.setItem("user", JSON.stringify(response.user));
+      
+      // Convert backend user format to frontend format
+      const user: User = {
+        id: response.user.id,
+        name: response.user.name,
+        email: response.user.email,
+        role: response.user.role as UserRole,
+        // TODO: Get accessible locations from backend
+        // For now, we'll determine accessible locations based on role
+        accessibleLocations: getDefaultAccessibleLocations(response.user.role),
+        createdAt: response.user.created_at || new Date().toISOString(),
+      };
+      
+      setUser(user);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Login failed";
       setError(message);
@@ -137,16 +150,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const createUser = useCallback(async (data: CreateUserData) => {
     try {
       setError(null);
-      // Mock implementation - in production, call backend API
-      const newUser: User = {
-        id: Date.now().toString(),
-        name: data.name,
-        email: data.email,
-        role: data.role,
+      // Real API call to create user
+      const newUser = await userApi.createUser(data);
+      
+      // Convert backend response to frontend format
+      const user: User = {
+        id: newUser.id,
+        name: newUser.name,
+        email: newUser.email,
+        role: newUser.role as UserRole,
         locationId: data.locationId,
-        createdAt: new Date().toISOString(),
+        createdAt: newUser.created_at || new Date().toISOString(),
       };
-      setUsers([...users, newUser]);
+      
+      setUsers([...users, user]);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to create user";
       setError(message);
@@ -158,15 +175,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     async (id: string, data: Partial<CreateUserData>) => {
       try {
         setError(null);
-        // Mock implementation
+        // Real API call to update user
+        const updatedUser = await userApi.updateUser(id, data);
+        
+        // Update local state
         setUsers(
           users.map((u) =>
             u.id === id
               ? {
                   ...u,
-                  name: data.name || u.name,
-                  email: data.email || u.email,
-                  role: data.role || u.role,
+                  name: updatedUser.name || u.name,
+                  email: updatedUser.email || u.email,
+                  role: updatedUser.role as UserRole || u.role,
                   locationId: data.locationId || u.locationId,
                 }
               : u
@@ -185,7 +205,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     async (id: string) => {
       try {
         setError(null);
-        // Mock implementation
+        // Real API call to delete user
+        await userApi.deleteUser(id);
+        
+        // Update local state
         setUsers(users.filter((u) => u.id !== id));
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to delete user";
@@ -199,64 +222,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const getUsers = useCallback(async () => {
     try {
       setError(null);
-      // Mock implementation - return sample users with location assignments
-      if (users.length === 0) {
-        const sampleUsers: User[] = [
-          {
-            id: "1",
-            name: "Admin User",
-            email: "admin@dhako.com",
-            role: "ADMIN",
-            accessibleLocations: ["w1", "w2", "w3", "b1", "b2", "b3"],
-            createdAt: new Date().toISOString(),
-          },
-          {
-            id: "2",
-            name: "Inventory Manager",
-            email: "inventory@dhako.com",
-            role: "INVENTORY_MANAGER",
-            locationId: "w1",
-            accessibleLocations: ["w1", "w2", "w3", "b1", "b2", "b3"],
-            createdAt: new Date().toISOString(),
-          },
-          {
-            id: "3",
-            name: "Branch Manager - Mogadishu",
-            email: "branch@dhako.com",
-            role: "BRANCH_MANAGER",
-            locationId: "b1",
-            accessibleLocations: ["b1"],
-            createdAt: new Date().toISOString(),
-          },
-          {
-            id: "4",
-            name: "Branch Manager - Hargeisa",
-            email: "branch2@dhako.com",
-            role: "BRANCH_MANAGER",
-            locationId: "b2",
-            accessibleLocations: ["b2"],
-            createdAt: new Date().toISOString(),
-          },
-          {
-            id: "5",
-            name: "Branch Manager - Kismayo",
-            email: "branch3@dhako.com",
-            role: "BRANCH_MANAGER",
-            locationId: "b3",
-            accessibleLocations: ["b3"],
-            createdAt: new Date().toISOString(),
-          },
-        ];
-        setUsers(sampleUsers);
-        return sampleUsers;
-      }
-      return users;
+      // Real API call to get users
+      const backendUsers = await userApi.getUsers();
+      
+      // Convert backend users to frontend format
+      const frontendUsers: User[] = backendUsers.map((backendUser: any) => ({
+        id: backendUser.id,
+        name: backendUser.name,
+        email: backendUser.email,
+        role: backendUser.role as UserRole,
+        locationId: backendUser.location_id,
+        createdAt: backendUser.created_at || new Date().toISOString(),
+      }));
+      
+      setUsers(frontendUsers);
+      return frontendUsers;
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to fetch users";
       setError(message);
       throw err;
     }
-  }, [users]);
+  }, []);
 
   // Location scoping helpers
   const canAccessLocation = useCallback(
