@@ -61,8 +61,29 @@ export default function Sidebar({ current, onNav, expanded, onToggleExpand, open
 
   function handleNav(page: string) {
     onNav(page);
-    if (window.innerWidth < 768) onClose();
+    if (window.innerWidth < 1024) onClose(); // Use lg breakpoint (1024px)
   }
+
+  // Different styling for mobile overlay vs desktop fixed
+  const isMobileOverlay = typeof window !== 'undefined' && window.innerWidth < 1024;
+  
+  const sidebarStyle = isMobileOverlay ? {
+    // Mobile: Fixed overlay with controlled width
+    width: "min(280px, 80vw)",
+    background: "#1e3a8a", 
+    flexShrink: 0,
+    transform: open ? "translateX(0)" : "translateX(-100%)",
+    WebkitTransform: open ? "translateX(0)" : "translateX(-100%)",
+    maxHeight: "100vh"
+  } : {
+    // Desktop: Fill parent container (which has clamp width)
+    width: "100%",
+    background: "#1e3a8a", 
+    flexShrink: 0,
+    transform: "translateX(0)",
+    WebkitTransform: "translateX(0)",
+    maxHeight: "100vh"
+  };
 
   return (
     <>
@@ -70,20 +91,13 @@ export default function Sidebar({ current, onNav, expanded, onToggleExpand, open
         <div className="fixed inset-0 z-20 md:hidden" style={{ background: "rgba(0,0,0,0.5)" }} onClick={onClose} />
       )}
       <aside
-        className="fixed md:static inset-y-0 left-0 z-30 flex flex-col transition-transform duration-200 overflow-y-auto"
-        style={{ 
-          width: "min(280px, 80vw)",
-          background: "#1e3a8a", 
-          flexShrink: 0,
-          transform: open ? "translateX(0)" : "translateX(-100%)",
-          WebkitTransform: open ? "translateX(0)" : "translateX(-100%)",
-          maxHeight: "100vh"
-        }}
+        className="fixed lg:static inset-y-0 left-0 z-30 flex flex-col transition-transform duration-200 overflow-y-auto sidebar"
+        style={sidebarStyle}
       >
         {/* Close button for mobile */}
         <button
           onClick={onClose}
-          className="md:hidden absolute top-4 right-4 p-2 text-white z-40"
+          className="lg:hidden absolute top-4 right-4 p-2 text-white z-40"
           style={{ background: "rgba(255,255,255,0.2)", borderRadius: "0.375rem" }}
         >
           ✕
