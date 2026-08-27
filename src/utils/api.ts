@@ -133,7 +133,7 @@ export const authApi = {
 export const userApi = {
   getUsers: () => api.get<any[]>('/auth/users'),
   
-  createUser: (userData: any) => api.post<any>('/auth/users', userData),
+  createUser: (userData: any) => api.post<any>('/auth/register', userData),
   
   updateUser: (id: string, userData: any) => api.put<any>(`/auth/users/${id}`, userData),
   

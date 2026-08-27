@@ -74,3 +74,58 @@ export async function logout(req: Request, res: Response) {
   // Backend just confirms the logout
   res.json({ success: true, message: "Logged out successfully" });
 }
+
+export async function getUsers(req: Request, res: Response) {
+  try {
+    const { rows } = await db.query(
+      "SELECT id, name, email, role, location_id, created_at FROM users ORDER BY created_at DESC"
+    );
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error("Error fetching users:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch users" });
+  }
+}
+
+export async function updateUser(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const { name, email, role, locationId } = req.body;
+
+    const { rows } = await db.query(
+      "UPDATE users SET name = COALESCE($1, name), email = COALESCE($2, email), role = COALESCE($3, role), location_id = COALESCE($4, location_id) WHERE id = $5 RETURNING id, name, email, role, location_id, created_at",
+      [name || null, email || null, role || null, locationId || null, id]
+    );
+
+    if (!rows[0]) {
+      res.status(404).json({ success: false, error: "User not found" });
+      return;
+    }
+
+    res.json({ success: true, data: rows[0] });
+  } catch (error) {
+    console.error("Error updating user:", error);
+    res.status(500).json({ success: false, error: "Failed to update user" });
+  }
+}
+
+export async function deleteUser(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+
+    const { rows } = await db.query(
+      "DELETE FROM users WHERE id = $1 RETURNING id",
+      [id]
+    );
+
+    if (!rows[0]) {
+      res.status(404).json({ success: false, error: "User not found" });
+      return;
+    }
+
+    res.json({ success: true, message: "User deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting user:", error);
+    res.status(500).json({ success: false, error: "Failed to delete user" });
+  }
+}
