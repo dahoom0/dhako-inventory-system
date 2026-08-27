@@ -141,47 +141,47 @@ export default function App() {
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "#f0f4ff" }}>
-      {/* Desktop sidebar - collapsible */}
-      <div className="hidden lg:flex flex-shrink-0" style={{ width: 160 }}>
+      {/* Desktop sidebar - always visible, uses container queries for responsiveness */}
+      <div className="hidden lg:flex flex-shrink-0" style={{ width: "clamp(140px, 15vw, 180px)" }}>
         <Sidebar current={page} onNav={setPage} expanded={expanded} onToggleExpand={toggleExpand} open={true} onClose={() => {}} onLogout={logout} />
       </div>
 
-      {/* Mobile/Tablet sidebar - slide-in */}
+      {/* Mobile/Tablet sidebar - slide-in overlay */}
       <div className="lg:hidden">
         <Sidebar current={page} onNav={setPage} expanded={expanded} onToggleExpand={toggleExpand} open={sidebarOpen} onClose={() => setSidebarOpen(false)} onLogout={logout} />
       </div>
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Topbar */}
-        <header className="flex items-center justify-between px-3 py-2 flex-shrink-0 bg-white gap-2 flex-wrap" style={{ borderBottom: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-          <div className="flex items-center gap-2 min-w-0">
-            <button onClick={() => setSidebarOpen(true)} className="md:hidden p-2 rounded-lg flex-shrink-0" style={{ color: "#1e3a8a" }}>
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden" style={{ containerType: "size" }}>
+        {/* Topbar - fluid spacing */}
+        <header className="flex items-center justify-between flex-shrink-0 bg-white gap-[clamp(0.5rem,1.5vw,1rem)] flex-wrap" style={{ borderBottom: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", padding: "clamp(0.5rem, 2vw, 1.25rem) clamp(0.75rem, 2vw, 1.5rem)" }}>
+          <div className="flex items-center gap-[clamp(0.5rem,1.5vw,1rem)] min-w-0">
+            <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 rounded-lg flex-shrink-0" style={{ color: "#1e3a8a" }}>
               <MenuIcon />
             </button>
             <div className="min-w-0">
-              <div className="font-bold text-xs sm:text-sm" style={{ color: "#1e3a8a" }}>{PAGE_TITLES[page] || page}</div>
-              <div className="text-xs hidden sm:block" style={{ color: "#94a3b8" }}>Dhako</div>
+              <div className="font-bold" style={{ fontSize: "clamp(0.875rem, 2vw, 1rem)", color: "#1e3a8a" }}>{PAGE_TITLES[page] || page}</div>
+              <div style={{ fontSize: "clamp(0.75rem, 1.5vw, 0.875rem)", color: "#94a3b8" }} className="hidden sm:block">Dhako</div>
             </div>
           </div>
-          <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-end">
+          <div className="flex items-center gap-[clamp(0.25rem,1vw,0.75rem)] flex-wrap justify-end">
             <div className="relative hidden sm:block">
               <button className="p-2 rounded-lg" style={{ color: "#64748b" }}><BellIcon /></button>
               <div className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full" style={{ background: "#dc2626" }} />
             </div>
-            <div className="hidden md:block text-xs font-semibold px-2 py-1 rounded-full" style={{ background: "#dbeafe", color: "#1d4ed8" }}>
+            <div className="hidden lg:block text-xs font-semibold px-2 py-1 rounded-full" style={{ background: "#dbeafe", color: "#1d4ed8", fontSize: "clamp(0.75rem, 1.5vw, 0.875rem)" }}>
               25 Aug
             </div>
-            <div className="flex items-center gap-1 sm:gap-2">
+            <div className="flex items-center gap-[clamp(0.25rem,1vw,0.75rem)]">
               <div className="text-right hidden sm:block">
-                <div className="text-xs font-semibold" style={{ color: "#1e3a8a" }}>{user?.name}</div>
-                <div className="text-xs" style={{ color: "#64748b" }}>{user?.role.replace(/_/g, " ")}</div>
+                <div style={{ fontSize: "clamp(0.75rem, 1.5vw, 0.875rem)", fontWeight: 600, color: "#1e3a8a" }}>{user?.name}</div>
+                <div style={{ fontSize: "clamp(0.75rem, 1.5vw, 0.875rem)", color: "#64748b" }}>{user?.role.replace(/_/g, " ")}</div>
               </div>
-              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0" style={{ background: "#1e3a8a", color: "#fff" }}>{user?.name.charAt(0)}</div>
+              <div className="rounded-full flex items-center justify-center font-bold flex-shrink-0" style={{ background: "#1e3a8a", color: "#fff", width: "clamp(28px, 6vw, 36px)", height: "clamp(28px, 6vw, 36px)", fontSize: "clamp(0.75rem, 1.5vw, 1rem)" }}>{user?.name.charAt(0)}</div>
             </div>
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto content-container" style={{ containerType: "inline-size", padding: "var(--spacing-md)" }}>
           {renderPage()}
         </main>
       </div>
