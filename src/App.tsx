@@ -141,13 +141,13 @@ export default function App() {
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "#f0f4ff" }}>
-      {/* Desktop sidebar */}
-      <div className="hidden md:flex flex-shrink-0" style={{ width: 200 }}>
+      {/* Desktop sidebar - collapsible */}
+      <div className="hidden lg:flex flex-shrink-0" style={{ width: 160 }}>
         <Sidebar current={page} onNav={setPage} expanded={expanded} onToggleExpand={toggleExpand} open={true} onClose={() => {}} onLogout={logout} />
       </div>
 
-      {/* Mobile sidebar */}
-      <div className="md:hidden">
+      {/* Mobile/Tablet sidebar - slide-in */}
+      <div className="lg:hidden">
         <Sidebar current={page} onNav={setPage} expanded={expanded} onToggleExpand={toggleExpand} open={sidebarOpen} onClose={() => setSidebarOpen(false)} onLogout={logout} />
       </div>
 

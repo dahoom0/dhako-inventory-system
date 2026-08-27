@@ -215,18 +215,19 @@ select option { background: white; color: #0f172a; }
     gap: 1rem;
   }
   
-  /* Sidebar optimization for desktop */
+  /* Sidebar optimization for desktop - narrow sidebar */
   [class*="sidebar"] {
-    width: 200px !important;
-    min-width: 200px !important;
+    width: 160px !important;
+    min-width: 160px !important;
     flex-shrink: 0;
   }
   
-  /* Content area optimization */
+  /* Content area gets most of the space */
   main {
     flex: 1;
     min-width: 0;
     overflow-y: auto;
+    padding: 1.5rem;
   }
   
   /* Icon sizes */
@@ -250,6 +251,16 @@ select option { background: white; color: #0f172a; }
     max-width: 100%;
     padding: 0 1.5rem;
   }
+}
+
+/* Extra large screens (1440px+) - even better spacing */
+@media (min-width: 1440px) {
+  main { padding: 2rem; }
+  
+  header { padding: 1.25rem 2rem; }
+  
+  .gap-4 { gap: 2rem; }
+  .gap-6 { gap: 2.5rem; }
 }
 
 /* ── Print Styles ── */
