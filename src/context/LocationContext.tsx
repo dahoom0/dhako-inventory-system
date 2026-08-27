@@ -16,6 +16,7 @@ interface LocationContextType {
   deleteLocation: (id: string) => void;
   getLocationName: (id: string) => string;
   getLocation: (id: string) => Location | undefined;
+  refetchLocations: () => Promise<void>; // New function to manually refetch
 }
 
 const LocationContext = createContext<LocationContextType | undefined>(undefined);
@@ -25,31 +26,66 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch locations from backend on mount
+  // Function to fetch locations - can be called manually
+  const fetchLocations = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      console.log("📍 Fetching locations...");
+      const data = await locationApi.getLocations();
+      console.log("✅ Locations fetched successfully:", data);
+      // Transform backend response to match Location interface
+      const transformedLocations: Location[] = data.map((loc: any) => ({
+        id: loc.id,
+        name: loc.name,
+        type: loc.type || "WAREHOUSE",
+      }));
+      console.log("✅ Transformed locations:", transformedLocations);
+      setLocations(transformedLocations);
+    } catch (err) {
+      console.error("❌ Failed to fetch locations:", err);
+      setError(err instanceof Error ? err.message : "Failed to fetch locations");
+      setLocations([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Refetch locations whenever the page becomes visible or after user logs in
   useEffect(() => {
-    const fetchLocations = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const data = await locationApi.getLocations();
-        // Transform backend response to match Location interface
-        const transformedLocations: Location[] = data.map((loc: any) => ({
-          id: loc.id,
-          name: loc.name,
-          type: loc.type || "WAREHOUSE",
-        }));
-        setLocations(transformedLocations);
-      } catch (err) {
-        console.error("Failed to fetch locations:", err);
-        setError(err instanceof Error ? err.message : "Failed to fetch locations");
-        setLocations([]);
-      } finally {
-        setIsLoading(false);
+    console.log("🔄 LocationContext mounted/updated, attempting to fetch locations");
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      console.log("🔐 Auth token found, fetching locations");
+      fetchLocations();
+    } else {
+      console.log("⏳ No auth token found, locations will be fetched after login");
+      setIsLoading(false);
+      setLocations([]);
+    }
+
+    // Listen for authTokenSet event from AuthContext
+    const handleAuthTokenSet = () => {
+      console.log("🔐 authTokenSet event fired, refetching locations");
+      fetchLocations();
+    };
+
+    window.addEventListener('authTokenSet', handleAuthTokenSet);
+
+    // Also refetch when window/tab becomes visible (user switches tabs)
+    const handleVisibilityChange = () => {
+      if (!document.hidden && localStorage.getItem('authToken')) {
+        console.log("👁️ Tab became visible, refetching locations");
+        fetchLocations();
       }
     };
 
-    fetchLocations();
-  }, []);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('authTokenSet', handleAuthTokenSet);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [fetchLocations]);
 
   const addLocation = useCallback((location: Location) => {
     setLocations((prev) => [...prev, location]);
@@ -91,6 +127,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
         deleteLocation,
         getLocationName,
         getLocation,
+        refetchLocations: fetchLocations,
       }}
     >
       {children}

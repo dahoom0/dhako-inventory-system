@@ -268,36 +268,6 @@ const UserManagement: React.FC = () => {
                       ? "Assign Branch *" 
                       : "Assign Warehouses *"}
                   </label>
-                  
-                  {/* DEBUG: Show locations loading state */}
-                  <div style={{border: '2px solid orange', padding: '10px', backgroundColor: 'lightyellow', marginBottom: '10px'}}>
-                    <p>🔍 DEBUG Location Data:</p>
-                    <p>• Locations loading: {locationsLoading ? 'YES' : 'NO'}</p>
-                    <p>• Locations count: {locations.length}</p>
-                    <p>• Locations error: {locationsError || 'none'}</p>
-                    <button 
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          console.log('🔍 Testing location API directly...');
-                          const { locationApi } = await import('@/utils/api');
-                          const result = await locationApi.getLocations();
-                          console.log('🔍 Direct API result:', result);
-                          alert('Check console for location API result');
-                        } catch (err) {
-                          console.error('🚨 Direct API error:', err);
-                          alert('Location API Error: ' + (err instanceof Error ? err.message : 'Unknown error'));
-                        }
-                      }}
-                      style={{padding: '5px 10px', margin: '5px', backgroundColor: 'lightblue'}}
-                    >
-                      Test Location API
-                    </button>
-                    <details>
-                      <summary>Show all locations</summary>
-                      <pre>{JSON.stringify(locations, null, 2)}</pre>
-                    </details>
-                  </div>
                   {formData.role === "INVENTORY_MANAGER" ? (
                     // Multi-select for INVENTORY_MANAGER
                     <select

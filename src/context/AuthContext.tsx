@@ -132,6 +132,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       };
       
       setUser(user);
+      
+      // Refetch locations after login succeeds
+      // This ensures locations are loaded after auth token is set
+      console.log("✅ Login successful, refetching locations");
+      // Note: We can't directly call refetchLocations here as it's in LocationContext
+      // Instead, we'll dispatch a custom event that LocationContext listens to
+      window.dispatchEvent(new Event('authTokenSet'));
     } catch (err) {
       const message = err instanceof Error ? err.message : "Login failed";
       setError(message);
