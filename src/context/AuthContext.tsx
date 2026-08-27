@@ -42,6 +42,7 @@ export interface CreateUserData {
   password: string;
   role: UserRole;
   locationId?: string;
+  locationIds?: string[]; // For INVENTORY_MANAGER with multiple locations
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);

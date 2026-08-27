@@ -20,10 +20,25 @@ CREATE TABLE users (
   email         TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   role          TEXT NOT NULL CHECK (role IN ('ADMIN','INVENTORY_MANAGER','BRANCH_MANAGER','BRANCH_STAFF')),
-  location_id   UUID REFERENCES locations(id),  -- NULL = Admin
+  location_id   UUID REFERENCES locations(id),  -- NULL = Admin or multi-location
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ── User-Location assignments (many-to-many) ──────────────────────────────────
+-- For INVENTORY_MANAGER: can be assigned to multiple warehouses
+-- For BRANCH_MANAGER: typically one branch, but this table allows flexibility
+-- For ADMIN/BRANCH_STAFF: location_id in users table is used
+CREATE TABLE user_locations (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  location_id   UUID NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+  assigned_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(user_id, location_id)
+);
+
+CREATE INDEX idx_user_locations_user ON user_locations(user_id);
+CREATE INDEX idx_user_locations_location ON user_locations(location_id);
 
 -- ── Products ──────────────────────────────────────────────────────────────────
 CREATE TABLE products (

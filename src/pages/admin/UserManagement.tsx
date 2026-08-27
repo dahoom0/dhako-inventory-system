@@ -53,9 +53,14 @@ const UserManagement: React.FC = () => {
       return;
     }
 
-    // Validate locationId requirement based on role
-    if ((formData.role === "BRANCH_MANAGER" || formData.role === "INVENTORY_MANAGER") && !formData.locationId) {
-      setFormError(`${formData.role === "BRANCH_MANAGER" ? "Branch" : "Warehouse"} assignment is required for this role`);
+    // Validate locationId/locationIds requirement based on role
+    if (formData.role === "BRANCH_MANAGER" && !formData.locationId) {
+      setFormError("Branch assignment is required for this role");
+      return;
+    }
+    
+    if (formData.role === "INVENTORY_MANAGER" && (!formData.locationIds || formData.locationIds.length === 0)) {
+      setFormError("At least one warehouse assignment is required for this role");
       return;
     }
 
@@ -65,7 +70,7 @@ const UserManagement: React.FC = () => {
       } else {
         await createUser(formData);
       }
-      setFormData({ name: "", email: "", password: "", role: "BRANCH_MANAGER", locationId: undefined });
+      setFormData({ name: "", email: "", password: "", role: "BRANCH_MANAGER", locationId: undefined, locationIds: [] });
       setEditingUser(null);
       setShowForm(false);
       await fetchUsers();
@@ -74,7 +79,7 @@ const UserManagement: React.FC = () => {
     }
   };
 
-  const handleEdit = (user: User) => {
+  const handleEdit = async (user: User) => {
     setEditingUser(user);
     setFormData({
       name: user.name,
@@ -82,7 +87,20 @@ const UserManagement: React.FC = () => {
       password: "",
       role: user.role,
       locationId: user.locationId,
+      locationIds: [],
     });
+
+    // If INVENTORY_MANAGER, fetch their assigned locations
+    if (user.role === "INVENTORY_MANAGER") {
+      try {
+        const locationsData = await userApi.getUserLocations(user.id);
+        const locationIds = locationsData.locations.map((loc: any) => loc.id);
+        setFormData(prev => ({ ...prev, locationIds }));
+      } catch (err) {
+        console.error("Failed to fetch user locations:", err);
+      }
+    }
+
     setShowForm(true);
   };
 
@@ -100,7 +118,7 @@ const UserManagement: React.FC = () => {
   const handleCancel = () => {
     setShowForm(false);
     setEditingUser(null);
-    setFormData({ name: "", email: "", password: "", role: "BRANCH_MANAGER", locationId: undefined });
+    setFormData({ name: "", email: "", password: "", role: "BRANCH_MANAGER", locationId: undefined, locationIds: [] });
     setFormError("");
   };
 
@@ -237,32 +255,54 @@ const UserManagement: React.FC = () => {
               {(formData.role === "BRANCH_MANAGER" || formData.role === "INVENTORY_MANAGER") && (
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    {formData.role === "BRANCH_MANAGER" ? "Assign Branch *" : "Primary Warehouse *"}
+                    {formData.role === "BRANCH_MANAGER" 
+                      ? "Assign Branch *" 
+                      : "Assign Warehouses *"}
                   </label>
-                  <select
-                    name="locationId"
-                    value={formData.locationId || ""}
-                    onChange={handleFormChange}
-                    className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium"
-                    required
-                  >
-                    <option value="">-- Select Location --</option>
-                    {locations
-                      .filter(loc => 
-                        formData.role === "BRANCH_MANAGER" 
-                          ? loc.type === "BRANCH" 
-                          : loc.type === "WAREHOUSE"
-                      )
-                      .map(loc => (
-                        <option key={loc.id} value={loc.id}>
-                          {loc.type === "BRANCH" ? "🏪" : "🏭"} {loc.name}
-                        </option>
-                      ))}
-                  </select>
+                  {formData.role === "INVENTORY_MANAGER" ? (
+                    // Multi-select for INVENTORY_MANAGER
+                    <select
+                      name="locationIds"
+                      multiple
+                      value={formData.locationIds || []}
+                      onChange={(e) => {
+                        const selectedIds = Array.from(e.target.selectedOptions, option => option.value);
+                        setFormData(prev => ({ ...prev, locationIds: selectedIds }));
+                      }}
+                      className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium"
+                      required
+                    >
+                      {locations
+                        .filter(loc => loc.type === "WAREHOUSE")
+                        .map(loc => (
+                          <option key={loc.id} value={loc.id}>
+                            🏭 {loc.name}
+                          </option>
+                        ))}
+                    </select>
+                  ) : (
+                    // Single select for BRANCH_MANAGER
+                    <select
+                      name="locationId"
+                      value={formData.locationId || ""}
+                      onChange={handleFormChange}
+                      className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium"
+                      required
+                    >
+                      <option value="">-- Select Location --</option>
+                      {locations
+                        .filter(loc => loc.type === "BRANCH")
+                        .map(loc => (
+                          <option key={loc.id} value={loc.id}>
+                            🏪 {loc.name}
+                          </option>
+                        ))}
+                    </select>
+                  )}
                   <p className="text-xs text-gray-500 mt-1">
                     {formData.role === "BRANCH_MANAGER" 
                       ? "This user will only see data for the selected branch"
-                      : "Primary warehouse this manager will work with"}
+                      : "Hold Ctrl/Cmd to select multiple warehouses. This manager can work with all selected warehouses."}
                   </p>
                 </div>
               )}

@@ -133,21 +133,53 @@ export const authApi = {
 export const userApi = {
   getUsers: () => api.get<any[]>('/auth/users'),
   
+  getUserLocations: (id: string) => api.get<any>(`/auth/users/${id}/locations`),
+  
   createUser: (userData: any) => {
-    // Remove empty locationId before sending
+    // Clean data before sending
     const cleanData = { ...userData };
+    
+    // For INVENTORY_MANAGER, convert locationId to locationIds array
+    if (cleanData.role === "INVENTORY_MANAGER" && cleanData.locationIds) {
+      // locationIds is already an array, keep it
+    } else if (cleanData.role === "INVENTORY_MANAGER" && cleanData.locationId) {
+      // Convert single locationId to locationIds array
+      cleanData.locationIds = cleanData.locationId ? [cleanData.locationId] : [];
+      delete cleanData.locationId;
+    }
+    
+    // Remove empty locationId/locationIds
     if (!cleanData.locationId) {
       delete cleanData.locationId;
     }
+    if (!cleanData.locationIds || cleanData.locationIds.length === 0) {
+      delete cleanData.locationIds;
+    }
+    
     return api.post<any>('/auth/register', cleanData);
   },
   
   updateUser: (id: string, userData: any) => {
-    // Remove empty locationId before sending
+    // Clean data before sending
     const cleanData = { ...userData };
+    
+    // For INVENTORY_MANAGER, convert locationId to locationIds array
+    if (cleanData.role === "INVENTORY_MANAGER" && cleanData.locationIds) {
+      // locationIds is already an array, keep it
+    } else if (cleanData.role === "INVENTORY_MANAGER" && cleanData.locationId) {
+      // Convert single locationId to locationIds array
+      cleanData.locationIds = cleanData.locationId ? [cleanData.locationId] : [];
+      delete cleanData.locationId;
+    }
+    
+    // Remove empty locationId/locationIds
     if (!cleanData.locationId) {
       delete cleanData.locationId;
     }
+    if (!cleanData.locationIds || cleanData.locationIds.length === 0) {
+      delete cleanData.locationIds;
+    }
+    
     return api.put<any>(`/auth/users/${id}`, cleanData);
   },
   
