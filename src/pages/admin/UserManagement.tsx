@@ -8,7 +8,7 @@ import { userApi } from "@/utils/api";
 
 const UserManagement: React.FC = () => {
   const { createUser, updateUser, deleteUser, getUsers, error } = useAuth();
-  const { locations } = useLocations();
+  const { locations, isLoading: locationsLoading, error: locationsError } = useLocations();
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -169,11 +169,7 @@ const UserManagement: React.FC = () => {
                 label="Download Users"
                 onExport={handleExportUsers}
               />
-              <Btn onClick={() => {
-                console.log('🔥 Create User button clicked!');
-                setShowForm(true);
-                console.log('🔥 showForm set to true');
-              }} variant="primary">
+              <Btn onClick={() => setShowForm(true)} variant="primary">
                 + Create New User
               </Btn>
             </div>
@@ -190,9 +186,6 @@ const UserManagement: React.FC = () => {
       {/* User Form */}
       {showForm && (
         <Card className="p-6 border-2 border-blue-400 bg-gradient-to-br from-blue-50 to-white">
-          <div style={{border: '2px solid red', padding: '10px', backgroundColor: 'yellow'}}>
-            <h2>🚨 DEBUG: FORM IS RENDERING - showForm = {showForm.toString()}</h2>
-          </div>
           <h3 className="text-xl font-bold text-gray-800 mb-1">
             {editingUser ? "✏️ Edit User" : "➕ Create New User"}
           </h3>
@@ -256,15 +249,11 @@ const UserManagement: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Role / Permission *</label>
-                <div style={{border: '3px solid green', padding: '5px', backgroundColor: 'lightgreen'}}>
-                  <p>🚨 DEBUG: Role dropdown is here - current value: {formData.role}</p>
-                </div>
                 <select
                   name="role"
                   value={formData.role}
                   onChange={handleFormChange}
                   className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium"
-                  style={{border: '3px solid blue', backgroundColor: 'lightblue'}}
                 >
                   <option value="ADMIN">🔐 Admin - Full System Access</option>
                   <option value="INVENTORY_MANAGER">📦 Inventory Manager - Warehouse Management</option>
@@ -279,6 +268,36 @@ const UserManagement: React.FC = () => {
                       ? "Assign Branch *" 
                       : "Assign Warehouses *"}
                   </label>
+                  
+                  {/* DEBUG: Show locations loading state */}
+                  <div style={{border: '2px solid orange', padding: '10px', backgroundColor: 'lightyellow', marginBottom: '10px'}}>
+                    <p>🔍 DEBUG Location Data:</p>
+                    <p>• Locations loading: {locationsLoading ? 'YES' : 'NO'}</p>
+                    <p>• Locations count: {locations.length}</p>
+                    <p>• Locations error: {locationsError || 'none'}</p>
+                    <button 
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          console.log('🔍 Testing location API directly...');
+                          const { locationApi } = await import('@/utils/api');
+                          const result = await locationApi.getLocations();
+                          console.log('🔍 Direct API result:', result);
+                          alert('Check console for location API result');
+                        } catch (err) {
+                          console.error('🚨 Direct API error:', err);
+                          alert('Location API Error: ' + (err instanceof Error ? err.message : 'Unknown error'));
+                        }
+                      }}
+                      style={{padding: '5px 10px', margin: '5px', backgroundColor: 'lightblue'}}
+                    >
+                      Test Location API
+                    </button>
+                    <details>
+                      <summary>Show all locations</summary>
+                      <pre>{JSON.stringify(locations, null, 2)}</pre>
+                    </details>
+                  </div>
                   {formData.role === "INVENTORY_MANAGER" ? (
                     // Multi-select for INVENTORY_MANAGER
                     <select
