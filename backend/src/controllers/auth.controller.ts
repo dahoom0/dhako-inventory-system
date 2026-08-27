@@ -228,3 +228,54 @@ export async function getUserLocations(req: Request, res: Response) {
     res.status(500).json({ success: false, error: "Failed to fetch user locations" });
   }
 }
+
+/**
+ * Seed database with default locations (admin only, development/testing)
+ * This endpoint is useful when deploying to a fresh database
+ */
+export async function seedLocations(req: Request, res: Response) {
+  try {
+    // Check if already seeded
+    const { rows: existingLocations } = await db.query("SELECT COUNT(*) as count FROM locations");
+    const locationCount = parseInt(existingLocations[0].count);
+
+    if (locationCount > 0) {
+      res.json({ 
+        success: true, 
+        message: "Locations already seeded",
+        data: { existing: locationCount }
+      });
+      return;
+    }
+
+    // Seed default locations
+    const { rows: newLocations } = await db.query(
+      `INSERT INTO locations (name, type, created_at)
+       VALUES 
+       ($1, $2, now()),
+       ($3, $4, now()),
+       ($5, $6, now()),
+       ($7, $8, now()),
+       ($9, $10, now()),
+       ($11, $12, now())
+       RETURNING id, name, type`,
+      [
+        "Warehouse A", "WAREHOUSE",
+        "Warehouse B", "WAREHOUSE",
+        "Warehouse C", "WAREHOUSE",
+        "Branch Mogadishu", "BRANCH",
+        "Branch Hargeisa", "BRANCH",
+        "Branch Kismayo", "BRANCH"
+      ]
+    );
+
+    res.json({ 
+      success: true, 
+      message: "Locations seeded successfully",
+      data: newLocations
+    });
+  } catch (error) {
+    console.error("Error seeding locations:", error);
+    res.status(500).json({ success: false, error: "Failed to seed locations" });
+  }
+}

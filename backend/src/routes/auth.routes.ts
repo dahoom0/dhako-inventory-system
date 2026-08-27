@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { login, register, me, logout, getUsers, updateUser, deleteUser, getUserLocations } from "../controllers/auth.controller";
+import { login, register, me, logout, getUsers, updateUser, deleteUser, getUserLocations, seedLocations } from "../controllers/auth.controller";
 import { authenticate } from "../middleware/auth";
 import { isAdmin } from "../middleware/rbac";
 
@@ -13,5 +13,6 @@ router.get("/users",     authenticate, isAdmin, getUsers);   // get all users (a
 router.get("/users/:id/locations", authenticate, getUserLocations); // get user's assigned locations
 router.put("/users/:id", authenticate, isAdmin, updateUser); // update user (admin only)
 router.delete("/users/:id", authenticate, isAdmin, deleteUser); // delete user (admin only)
+router.post("/seed-locations", authenticate, isAdmin, seedLocations); // seed default locations (admin only)
 
 export default router;
