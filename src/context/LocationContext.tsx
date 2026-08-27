@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, ReactNode, useCallback } from "react";
+import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect } from "react";
+import { locationApi } from "@/utils/api";
 
 export interface Location {
   id: string;
@@ -8,6 +9,8 @@ export interface Location {
 
 interface LocationContextType {
   locations: Location[];
+  isLoading: boolean;
+  error: string | null;
   addLocation: (location: Location) => void;
   updateLocation: (id: string, name: string) => void;
   deleteLocation: (id: string) => void;
@@ -17,18 +20,36 @@ interface LocationContextType {
 
 const LocationContext = createContext<LocationContextType | undefined>(undefined);
 
-// Mock locations - can be fetched from backend later
-const INITIAL_LOCATIONS: Location[] = [
-  { id: "w1", name: "Warehouse A", type: "WAREHOUSE" },
-  { id: "w2", name: "Warehouse B", type: "WAREHOUSE" },
-  { id: "w3", name: "Warehouse C", type: "WAREHOUSE" },
-  { id: "b1", name: "Branch Mogadishu", type: "BRANCH" },
-  { id: "b2", name: "Branch Hargeisa", type: "BRANCH" },
-  { id: "b3", name: "Branch Kismayo", type: "BRANCH" },
-];
-
 export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [locations, setLocations] = useState<Location[]>(INITIAL_LOCATIONS);
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch locations from backend on mount
+  useEffect(() => {
+    const fetchLocations = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const data = await locationApi.getLocations();
+        // Transform backend response to match Location interface
+        const transformedLocations: Location[] = data.map((loc: any) => ({
+          id: loc.id,
+          name: loc.name,
+          type: loc.type || "WAREHOUSE",
+        }));
+        setLocations(transformedLocations);
+      } catch (err) {
+        console.error("Failed to fetch locations:", err);
+        setError(err instanceof Error ? err.message : "Failed to fetch locations");
+        setLocations([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchLocations();
+  }, []);
 
   const addLocation = useCallback((location: Location) => {
     setLocations((prev) => [...prev, location]);
@@ -63,6 +84,8 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
     <LocationContext.Provider
       value={{
         locations,
+        isLoading,
+        error,
         addLocation,
         updateLocation,
         deleteLocation,
