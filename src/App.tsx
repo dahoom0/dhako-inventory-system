@@ -142,7 +142,7 @@ export default function App() {
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "#f0f4ff" }}>
       {/* Desktop sidebar */}
-      <div className="hidden md:flex flex-shrink-0" style={{ width: 220 }}>
+      <div className="hidden md:flex flex-shrink-0" style={{ width: 200 }}>
         <Sidebar current={page} onNav={setPage} expanded={expanded} onToggleExpand={toggleExpand} open={true} onClose={() => {}} onLogout={logout} />
       </div>
 

@@ -133,6 +133,125 @@ select option { background: white; color: #0f172a; }
   .grid-cols-4 { grid-template-columns: repeat(2, 1fr); }
 }
 
+/* ── Desktop Responsive Styles (1024px+) ── */
+@media (min-width: 1024px) {
+  html, body, #root { font-size: 14px; }
+  
+  /* Main layout optimization */
+  .flex-1 { min-width: 0; }
+  
+  /* Typography scaling for desktop */
+  h1 { font-size: 2rem; line-height: 1.2; }
+  h2 { font-size: 1.5rem; line-height: 1.3; }
+  h3 { font-size: 1.25rem; line-height: 1.3; }
+  h4 { font-size: 1.1rem; line-height: 1.4; }
+  h5, h6 { font-size: 1rem; line-height: 1.4; }
+  
+  /* Grid optimization for larger screens */
+  .grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
+  .grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid-cols-4 { grid-template-columns: repeat(4, 1fr); }
+  .grid-cols-5 { grid-template-columns: repeat(5, 1fr); }
+  
+  /* Larger gap values */
+  .gap-4 { gap: 1.5rem; }
+  .gap-6 { gap: 2rem; }
+  .gap-8 { gap: 2.5rem; }
+  
+  /* Padding normalization */
+  .p-4 { padding: 1rem; }
+  .p-6 { padding: 1.5rem; }
+  .p-8 { padding: 2rem; }
+  .px-4 { padding-left: 1rem; padding-right: 1rem; }
+  .py-4 { padding-top: 1rem; padding-bottom: 1rem; }
+  
+  /* Cards and containers */
+  [class*="card"],
+  [class*="Card"] {
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1rem;
+  }
+  
+  /* Forms */
+  input, select, textarea {
+    min-height: 40px;
+    font-size: 14px;
+    width: 100%;
+    padding: 0.75rem;
+  }
+  
+  /* Buttons */
+  button {
+    min-height: 40px;
+    padding: 0.75rem 1.5rem;
+    font-size: 14px;
+  }
+  
+  /* Tables */
+  table {
+    font-size: 14px;
+    width: 100%;
+  }
+  
+  th, td {
+    padding: 1rem 0.75rem;
+    text-align: left;
+  }
+  
+  thead {
+    font-weight: 600;
+    background: #f8fafc;
+  }
+  
+  tbody tr:hover {
+    background: #f0f4ff;
+    transition: background 0.15s;
+  }
+  
+  /* Header/Topbar optimization */
+  header {
+    padding: 1rem 1.5rem;
+    gap: 1rem;
+  }
+  
+  /* Sidebar optimization for desktop */
+  [class*="sidebar"] {
+    width: 200px !important;
+    min-width: 200px !important;
+    flex-shrink: 0;
+  }
+  
+  /* Content area optimization */
+  main {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+  }
+  
+  /* Icon sizes */
+  svg { width: auto; height: 20px; }
+  
+  /* Modal/Dialog optimization */
+  [role="dialog"],
+  .modal {
+    max-width: 600px;
+    min-width: 400px;
+    margin: auto;
+  }
+  
+  /* Sidebar navigation items with better spacing */
+  nav > * + * {
+    margin-top: 0.25rem;
+  }
+  
+  /* Reduce overall container padding for more content space */
+  .container {
+    max-width: 100%;
+    padding: 0 1.5rem;
+  }
+}
+
 /* ── Print Styles ── */
 @media print {
   /* Hide sidebar and navigation */
