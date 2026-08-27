@@ -18,6 +18,33 @@ async function seed() {
   const client = await pool.connect();
 
   try {
+    // Check if locations already exist
+    const locResult = await client.query("SELECT COUNT(*) as count FROM locations");
+    const locationCount = locResult.rows[0].count;
+
+    if (locationCount === 0) {
+      // Create sample locations
+      await client.query(
+        `INSERT INTO locations (name, type, created_at)
+         VALUES 
+         ($1, $2, now()),
+         ($3, $4, now()),
+         ($5, $6, now()),
+         ($7, $8, now()),
+         ($9, $10, now()),
+         ($11, $12, now())`,
+        [
+          "Warehouse A", "WAREHOUSE",
+          "Warehouse B", "WAREHOUSE",
+          "Warehouse C", "WAREHOUSE",
+          "Branch Mogadishu", "BRANCH",
+          "Branch Hargeisa", "BRANCH",
+          "Branch Kismayo", "BRANCH"
+        ]
+      );
+      console.log("✅ Sample locations created successfully");
+    }
+
     // Check if admin user already exists
     const result = await client.query(
       "SELECT id FROM users WHERE email = $1",
@@ -25,7 +52,7 @@ async function seed() {
     );
 
     if (result.rows.length > 0) {
-      console.log("Admin user already exists. Skipping seed.");
+      console.log("✅ Admin user already exists. Skipping user seed.");
       return;
     }
 
