@@ -153,30 +153,30 @@ export default function App() {
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Topbar */}
-        <header className="flex items-center justify-between px-4 py-3 flex-shrink-0 bg-white" style={{ borderBottom: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-          <div className="flex items-center gap-3">
-            <button onClick={() => setSidebarOpen(true)} className="md:hidden p-2 rounded-lg" style={{ color: "#1e3a8a" }}>
+        <header className="flex items-center justify-between px-3 py-2 flex-shrink-0 bg-white gap-2 flex-wrap" style={{ borderBottom: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+          <div className="flex items-center gap-2 min-w-0">
+            <button onClick={() => setSidebarOpen(true)} className="md:hidden p-2 rounded-lg flex-shrink-0" style={{ color: "#1e3a8a" }}>
               <MenuIcon />
             </button>
-            <div>
-              <div className="font-bold text-sm" style={{ color: "#1e3a8a" }}>{PAGE_TITLES[page] || page}</div>
-              <div className="text-xs hidden sm:block" style={{ color: "#94a3b8" }}>Dhako Management System</div>
+            <div className="min-w-0">
+              <div className="font-bold text-xs sm:text-sm" style={{ color: "#1e3a8a" }}>{PAGE_TITLES[page] || page}</div>
+              <div className="text-xs hidden sm:block" style={{ color: "#94a3b8" }}>Dhako</div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="relative">
+          <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-end">
+            <div className="relative hidden sm:block">
               <button className="p-2 rounded-lg" style={{ color: "#64748b" }}><BellIcon /></button>
               <div className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full" style={{ background: "#dc2626" }} />
             </div>
-            <div className="hidden sm:block text-xs font-semibold px-3 py-1.5 rounded-full" style={{ background: "#dbeafe", color: "#1d4ed8" }}>
-              25 Aug 2026
+            <div className="hidden md:block text-xs font-semibold px-2 py-1 rounded-full" style={{ background: "#dbeafe", color: "#1d4ed8" }}>
+              25 Aug
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2">
               <div className="text-right hidden sm:block">
                 <div className="text-xs font-semibold" style={{ color: "#1e3a8a" }}>{user?.name}</div>
                 <div className="text-xs" style={{ color: "#64748b" }}>{user?.role.replace(/_/g, " ")}</div>
               </div>
-              <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm" style={{ background: "#1e3a8a", color: "#fff" }}>{user?.name.charAt(0)}</div>
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0" style={{ background: "#1e3a8a", color: "#fff" }}>{user?.name.charAt(0)}</div>
             </div>
           </div>
         </header>
