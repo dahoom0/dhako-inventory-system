@@ -139,23 +139,29 @@ export const userApi = {
     // Clean data before sending
     const cleanData = { ...userData };
     
-    // For INVENTORY_MANAGER, convert locationId to locationIds array
-    if (cleanData.role === "INVENTORY_MANAGER" && cleanData.locationIds) {
-      // locationIds is already an array, keep it
-    } else if (cleanData.role === "INVENTORY_MANAGER" && cleanData.locationId) {
-      // Convert single locationId to locationIds array
-      cleanData.locationIds = cleanData.locationId ? [cleanData.locationId] : [];
-      delete cleanData.locationId;
+    // Remove null/undefined/empty values
+    if (!cleanData.locationId) delete cleanData.locationId;
+    
+    // For INVENTORY_MANAGER, ensure locationIds is sent as array
+    if (cleanData.role === "INVENTORY_MANAGER") {
+      if (cleanData.locationIds && Array.isArray(cleanData.locationIds) && cleanData.locationIds.length > 0) {
+        // Keep locationIds as array
+      } else if (cleanData.locationId) {
+        // Convert single locationId to locationIds
+        cleanData.locationIds = [cleanData.locationId];
+        delete cleanData.locationId;
+      } else {
+        // No location assigned, delete both
+        delete cleanData.locationIds;
+      }
     }
     
-    // Remove empty locationId/locationIds
-    if (!cleanData.locationId) {
-      delete cleanData.locationId;
-    }
-    if (!cleanData.locationIds || cleanData.locationIds.length === 0) {
+    // For other roles, use locationId
+    if (cleanData.role === "BRANCH_MANAGER" && !cleanData.locationId) {
       delete cleanData.locationIds;
     }
     
+    console.log("Creating user with data:", cleanData);
     return api.post<any>('/auth/register', cleanData);
   },
   
@@ -163,23 +169,29 @@ export const userApi = {
     // Clean data before sending
     const cleanData = { ...userData };
     
-    // For INVENTORY_MANAGER, convert locationId to locationIds array
-    if (cleanData.role === "INVENTORY_MANAGER" && cleanData.locationIds) {
-      // locationIds is already an array, keep it
-    } else if (cleanData.role === "INVENTORY_MANAGER" && cleanData.locationId) {
-      // Convert single locationId to locationIds array
-      cleanData.locationIds = cleanData.locationId ? [cleanData.locationId] : [];
-      delete cleanData.locationId;
+    // Remove null/undefined/empty values
+    if (!cleanData.locationId) delete cleanData.locationId;
+    
+    // For INVENTORY_MANAGER, ensure locationIds is sent as array
+    if (cleanData.role === "INVENTORY_MANAGER") {
+      if (cleanData.locationIds && Array.isArray(cleanData.locationIds) && cleanData.locationIds.length > 0) {
+        // Keep locationIds as array
+      } else if (cleanData.locationId) {
+        // Convert single locationId to locationIds
+        cleanData.locationIds = [cleanData.locationId];
+        delete cleanData.locationId;
+      } else {
+        // No location assigned, delete both
+        delete cleanData.locationIds;
+      }
     }
     
-    // Remove empty locationId/locationIds
-    if (!cleanData.locationId) {
-      delete cleanData.locationId;
-    }
-    if (!cleanData.locationIds || cleanData.locationIds.length === 0) {
+    // For other roles, use locationId
+    if (cleanData.role === "BRANCH_MANAGER" && !cleanData.locationId) {
       delete cleanData.locationIds;
     }
     
+    console.log("Updating user with data:", cleanData);
     return api.put<any>(`/auth/users/${id}`, cleanData);
   },
   
