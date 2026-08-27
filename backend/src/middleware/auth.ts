@@ -5,6 +5,10 @@ import { AuthTokenPayload } from "../models/types";
 
 export interface AuthRequest extends Request {
   user?: AuthTokenPayload;
+  body: any;
+  params: any;
+  query: any;
+  headers: any;
 }
 
 export function authenticate(req: AuthRequest, res: Response, next: NextFunction) {
