@@ -1,33 +1,67 @@
 import fs from "fs";
 import path from "path";
-import { Pool } from "pg";
+import { db } from "./db";
 import bcrypt from "bcryptjs";
-import dotenv from "dotenv";
 
-dotenv.config();
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl:
-    process.env.NODE_ENV === "production"
-      ? { rejectUnauthorized: false }
-      : false,
-});
-
-async function seed() {
-  const client = await pool.connect();
-
+/**
+ * Initialize database on server startup
+ * - Creates schema if tables don't exist
+ * - Seeds initial data if empty
+ * - Idempotent and production-safe
+ */
+export async function initializeDatabase() {
   try {
-    console.log("🌱 Starting comprehensive database seeding...\n");
+    console.log("\n🔧 Initializing database...\n");
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 1. SEED LOCATIONS
+    // STEP 1: Create schema from SQL file
     // ═══════════════════════════════════════════════════════════════════════
-    console.log("📍 Seeding Locations...");
-    const locResult = await client.query("SELECT COUNT(*) as count FROM locations");
-    const locationCount = locResult.rows[0].count;
+    console.log("📝 Creating schema...");
+    const schemaPath = path.join(__dirname, "../models/schema.sql");
+
+    if (!fs.existsSync(schemaPath)) {
+      console.warn(`⚠️  Schema file not found at ${schemaPath}, skipping schema creation`);
+    } else {
+      const schemaSql = fs.readFileSync(schemaPath, "utf8");
+      const statements = schemaSql
+        .split(";")
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+
+      let created = 0;
+      let skipped = 0;
+
+      for (const stmt of statements) {
+        try {
+          await db.query(stmt);
+          created++;
+        } catch (err: any) {
+          // Ignore "already exists" errors (42P07 = table exists, 42710 = index exists)
+          if (err.code === "42P07" || err.code === "42710") {
+            skipped++;
+          } else if (err.message.includes("already exists")) {
+            skipped++;
+          } else {
+            console.error("❌ Schema creation error:", err.message);
+            throw err;
+          }
+        }
+      }
+
+      console.log(`   ✅ Created: ${created}, Skipped: ${skipped}\n`);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // STEP 2: Check if data exists and seed if empty
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log("🌱 Seeding data...");
+
+    // Check location count
+    const locResult = await db.query("SELECT COUNT(*) as count FROM locations");
+    const locationCount = parseInt(locResult.rows[0].count, 10);
 
     if (locationCount === 0) {
+      console.log("   📍 Creating locations...");
       const locations = [
         { name: "Warehouse Mogadishu", type: "WAREHOUSE" },
         { name: "Warehouse Hargeisa", type: "WAREHOUSE" },
@@ -38,24 +72,21 @@ async function seed() {
       ];
 
       for (const loc of locations) {
-        await client.query(
+        await db.query(
           "INSERT INTO locations (name, type, created_at) VALUES ($1, $2, now())",
           [loc.name, loc.type]
         );
       }
-      console.log(`   ✅ Created ${locations.length} locations\n`);
-    } else {
-      console.log(`   ℹ️  Locations already exist (${locationCount})\n`);
+      console.log(`      ✅ ${locations.length} locations created`);
     }
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // 2. SEED USERS
-    // ═══════════════════════════════════════════════════════════════════════
-    console.log("👤 Seeding Users...");
-    const userCount = await client.query("SELECT COUNT(*) as count FROM users");
-    
-    if (userCount.rows[0].count === 0) {
-      const locIds = await client.query("SELECT id FROM locations ORDER BY created_at");
+    // Check user count
+    const userResult = await db.query("SELECT COUNT(*) as count FROM users");
+    const userCount = parseInt(userResult.rows[0].count, 10);
+
+    if (userCount === 0) {
+      console.log("   👤 Creating users...");
+      const locIds = await db.query("SELECT id FROM locations ORDER BY created_at");
       const warehouseIds = locIds.rows.slice(0, 3).map(r => r.id);
       const branchIds = locIds.rows.slice(3, 6).map(r => r.id);
 
@@ -68,24 +99,20 @@ async function seed() {
 
       for (const user of users) {
         const passwordHash = await bcrypt.hash(user.password, 12);
-        await client.query(
+        await db.query(
           "INSERT INTO users (name, email, password_hash, role, location_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, now(), now())",
           [user.name, user.email, passwordHash, user.role, user.locationId]
         );
       }
-      console.log(`   ✅ Created ${users.length} users`);
-      console.log("   🔐 Test credentials: admin@dhako.com / admin123\n");
-    } else {
-      console.log(`   ℹ️  Users already exist (${userCount.rows[0].count})\n`);
+      console.log(`      ✅ ${users.length} users created`);
     }
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // 3. SEED PRODUCTS
-    // ═══════════════════════════════════════════════════════════════════════
-    console.log("📦 Seeding Products...");
-    const prodCount = await client.query("SELECT COUNT(*) as count FROM products");
-    
-    if (prodCount.rows[0].count === 0) {
+    // Check product count
+    const prodResult = await db.query("SELECT COUNT(*) as count FROM products");
+    const productCount = parseInt(prodResult.rows[0].count, 10);
+
+    if (productCount === 0) {
+      console.log("   📦 Creating products...");
       const products = [
         { name: "Coca Cola 330ml", sku: "SKU-001", category: "Beverages", unit: "can", qty_per_ctn: 24, cost_per_ctn: 240, sell_per_ctn: 360, min_stock_ctn: 5 },
         { name: "Pepsi 330ml", sku: "SKU-002", category: "Beverages", unit: "can", qty_per_ctn: 24, cost_per_ctn: 220, sell_per_ctn: 340, min_stock_ctn: 5 },
@@ -105,43 +132,40 @@ async function seed() {
       ];
 
       for (const prod of products) {
-        await client.query(
+        await db.query(
           "INSERT INTO products (name, sku, category, unit, qty_per_ctn, cost_per_ctn, sell_per_ctn, min_stock_ctn, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now(), now())",
           [prod.name, prod.sku, prod.category, prod.unit, prod.qty_per_ctn, prod.cost_per_ctn, prod.sell_per_ctn, prod.min_stock_ctn, "ACTIVE"]
         );
       }
-      console.log(`   ✅ Created ${products.length} products\n`);
-    } else {
-      console.log(`   ℹ️  Products already exist (${prodCount.rows[0].count})\n`);
+      console.log(`      ✅ ${products.length} products created`);
     }
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // 4. SEED STOCK MOVEMENTS (Inventory)
-    // ═══════════════════════════════════════════════════════════════════════
-    console.log("📊 Seeding Stock Movements...");
-    const movCount = await client.query("SELECT COUNT(*) as count FROM stock_movements");
-    
-    if (movCount.rows[0].count === 0) {
-      const adminUser = await client.query("SELECT id FROM users WHERE email = $1", ["admin@dhako.com"]);
+    // Check stock movements count
+    const movResult = await db.query("SELECT COUNT(*) as count FROM stock_movements");
+    const movementCount = parseInt(movResult.rows[0].count, 10);
+
+    if (movementCount === 0) {
+      console.log("   📊 Creating initial stock...");
+      const adminUser = await db.query("SELECT id FROM users WHERE email = $1", ["admin@dhako.com"]);
       const userId = adminUser.rows[0].id;
 
-      const locations = await client.query("SELECT id, type FROM locations ORDER BY created_at");
+      const locations = await db.query("SELECT id, type FROM locations ORDER BY created_at");
       const warehouseIds = locations.rows.filter(r => r.type === "WAREHOUSE").map(r => r.id);
       const branchIds = locations.rows.filter(r => r.type === "BRANCH").map(r => r.id);
 
-      const products = await client.query("SELECT id, cost_per_ctn FROM products ORDER BY created_at");
+      const products = await db.query("SELECT id, cost_per_ctn FROM products ORDER BY created_at");
 
-      let movementCount = 0;
+      let totalMovements = 0;
 
       // Add stock to warehouses
       for (const warehouse of warehouseIds) {
         for (const product of products.rows) {
           const qty = Math.floor(Math.random() * 30) + 10;
-          await client.query(
+          await db.query(
             "INSERT INTO stock_movements (type, product_id, from_location_id, to_location_id, qty_ctn, cost_per_ctn, created_by, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, now())",
             ["STOCK_RECEIVED", product.id, null, warehouse, qty, product.cost_per_ctn, userId]
           );
-          movementCount++;
+          totalMovements++;
         }
       }
 
@@ -149,27 +173,23 @@ async function seed() {
       for (const branch of branchIds) {
         for (const product of products.rows.slice(0, 10)) {
           const qty = Math.floor(Math.random() * 15) + 3;
-          await client.query(
+          await db.query(
             "INSERT INTO stock_movements (type, product_id, from_location_id, to_location_id, qty_ctn, cost_per_ctn, created_by, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, now())",
             ["STOCK_RECEIVED", product.id, null, branch, qty, product.cost_per_ctn, userId]
           );
-          movementCount++;
+          totalMovements++;
         }
       }
-
-      console.log(`   ✅ Created ${movementCount} stock movements\n`);
-    } else {
-      console.log(`   ℹ️  Stock movements already exist (${movCount.rows[0].count})\n`);
+      console.log(`      ✅ ${totalMovements} stock movements created`);
     }
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // 5. SEED CUSTOMERS
-    // ═══════════════════════════════════════════════════════════════════════
-    console.log("👥 Seeding Customers...");
-    const custCount = await client.query("SELECT COUNT(*) as count FROM customers");
-    
-    if (custCount.rows[0].count === 0) {
-      const locations = await client.query("SELECT id FROM locations WHERE type = $1 ORDER BY created_at", ["BRANCH"]);
+    // Check customer count
+    const custResult = await db.query("SELECT COUNT(*) as count FROM customers");
+    const customerCount = parseInt(custResult.rows[0].count, 10);
+
+    if (customerCount === 0) {
+      console.log("   👥 Creating customers...");
+      const locations = await db.query("SELECT id FROM locations WHERE type = $1 ORDER BY created_at", ["BRANCH"]);
       const branchIds = locations.rows.map(r => r.id);
 
       const customers = [
@@ -182,44 +202,19 @@ async function seed() {
       ];
 
       for (const cust of customers) {
-        await client.query(
+        await db.query(
           "INSERT INTO customers (name, phone, email, location_id, created_at) VALUES ($1, $2, $3, $4, now())",
           [cust.name, cust.phone, cust.email, cust.locationId]
         );
       }
-      console.log(`   ✅ Created ${customers.length} customers\n`);
-    } else {
-      console.log(`   ℹ️  Customers already exist (${custCount.rows[0].count})\n`);
+      console.log(`      ✅ ${customers.length} customers created`);
     }
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // SUMMARY
-    // ═══════════════════════════════════════════════════════════════════════
-    console.log("=" .repeat(60));
-    console.log("📊 DATABASE SEEDING COMPLETE!\n");
-
-    const counts = {
-      locations: await client.query("SELECT COUNT(*) as count FROM locations"),
-      users: await client.query("SELECT COUNT(*) as count FROM users"),
-      products: await client.query("SELECT COUNT(*) as count FROM products"),
-      movements: await client.query("SELECT COUNT(*) as count FROM stock_movements"),
-      customers: await client.query("SELECT COUNT(*) as count FROM customers"),
-    };
-
-    console.log("📍 Locations:", counts.locations.rows[0].count);
-    console.log("👤 Users:", counts.users.rows[0].count);
-    console.log("📦 Products:", counts.products.rows[0].count);
-    console.log("📊 Stock Movements:", counts.movements.rows[0].count);
-    console.log("👥 Customers:", counts.customers.rows[0].count);
-    console.log("\n✅ Database is ready!\n");
+    // Summary
+    console.log("\n✅ Database initialization complete!\n");
 
   } catch (error) {
-    console.error("❌ Seed failed:", error);
+    console.error("❌ Database initialization failed:", error);
     process.exit(1);
-  } finally {
-    client.release();
-    await pool.end();
   }
 }
-
-seed();
