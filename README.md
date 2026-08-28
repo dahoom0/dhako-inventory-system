@@ -1,10 +1,54 @@
-# Render CLI
+# Dhako Inventory Management System
 
-## Installation
+A professional inventory and sales management system with role-based access control.
 
-- [Homebrew](https://render.com/docs/cli#homebrew-macos-linux)
-- [Direct Download](https://render.com/docs/cli#direct-download)
+## Project Structure
 
-## Documentation
+```
+├── frontend/          # React + TypeScript frontend
+│   ├── src/          # Source code
+│   ├── index.html    # Entry point
+│   └── package.json
+│
+├── backend/          # Node.js + Express API
+│   ├── src/
+│   │   ├── controllers/
+│   │   ├── routes/
+│   │   ├── middleware/
+│   │   ├── models/
+│   │   └── utils/
+│   └── package.json
+│
+└── .git/            # Version control
+```
 
-Documentation is hosted at https://render.com/docs/cli
+## Quick Start
+
+### Backend
+```bash
+cd backend
+npm install
+npm run dev
+```
+
+### Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+## Features
+
+- User authentication with JWT
+- Role-based access control
+- Multi-location support
+- Inventory management
+- Sales tracking
+- Dashboard analytics
+
+## Roles
+
+- **Admin**: Full system access
+- **Inventory Manager**: Warehouse management
+- **Branch Manager**: Branch operations
