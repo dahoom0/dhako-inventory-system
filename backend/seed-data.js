@@ -1,6 +1,6 @@
 const { Client } = require('pg');
-const fs = require('fs');
 const bcrypt = require('bcryptjs');
+const fs = require('fs');
 
 // Using external URL (will work from anywhere)
 const client = new Client({
@@ -9,51 +9,21 @@ const client = new Client({
   connect_timeout: 10
 });
 
-async function initializeDatabase() {
+async function seedDatabase() {
   try {
     console.log('🔌 Connecting to PostgreSQL...');
     await client.connect();
     console.log('✅ Connected!\n');
 
-    console.log('📝 Running initialization SQL...');
-    const sql = fs.readFileSync('./init-database.sql', 'utf8');
-    
-    // Split by semicolon and execute each statement
-    const statements = sql.split(';').filter(stmt => stmt.trim());
-    let success = 0;
-    let skipped = 0;
+    console.log('🌱 Starting database seeding...\n');
 
-    for (let i = 0; i < statements.length; i++) {
-      const stmt = statements[i].trim();
-      if (stmt) {
-        try {
-          await client.query(stmt);
-          success++;
-          process.stdout.write('.');
-        } catch (err) {
-          // Ignore "already exists" errors
-          if (err.message.includes('already exists')) {
-            skipped++;
-            process.stdout.write('⚠');
-          } else {
-            console.error(`\n❌ Error on statement ${i + 1}:`, err.message);
-            throw err;
-          }
-        }
-      }
-    }
-
-    console.log(`\n✅ Executed: ${success}, Skipped (already exists): ${skipped}\n`);
-    
     // ═══════════════════════════════════════════════════════════════════════
-    // SEED DATA
+    // 1. SEED LOCATIONS
     // ═══════════════════════════════════════════════════════════════════════
-    console.log('🌱 Seeding initial data...\n');
-
-    // Check if data already exists
-    const locCount = await client.query('SELECT COUNT(*) as count FROM locations');
-    if (locCount.rows[0].count === 0) {
-      console.log('  📍 Creating locations...');
+    console.log('📍 Seeding Locations...');
+    const locationsResult = await client.query('SELECT COUNT(*) as count FROM locations');
+    
+    if (locationsResult.rows[0].count === 0) {
       const locations = [
         { name: 'Warehouse Mogadishu', type: 'WAREHOUSE' },
         { name: 'Warehouse Hargeisa', type: 'WAREHOUSE' },
@@ -69,22 +39,52 @@ async function initializeDatabase() {
           [loc.name, loc.type]
         );
       }
-      console.log(`     ✅ ${locations.length} locations created\n`);
+      console.log(`   ✅ Created ${locations.length} locations`);
+    } else {
+      console.log(`   ℹ️  Locations already exist (${locationsResult.rows[0].count})`);
     }
 
-    // Create users
-    const userCount = await client.query('SELECT COUNT(*) as count FROM users');
-    if (userCount.rows[0].count === 0) {
-      console.log('  👤 Creating users...');
+    // ═══════════════════════════════════════════════════════════════════════
+    // 2. SEED USERS
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log('\n👤 Seeding Users...');
+    const usersResult = await client.query('SELECT COUNT(*) as count FROM users');
+    
+    if (usersResult.rows[0].count === 0) {
+      // Get location IDs for user assignment
       const locIds = await client.query('SELECT id FROM locations ORDER BY created_at');
       const warehouseIds = locIds.rows.slice(0, 3).map(r => r.id);
       const branchIds = locIds.rows.slice(3, 6).map(r => r.id);
 
       const users = [
-        { name: 'System Admin', email: 'admin@dhako.com', password: 'admin123', role: 'ADMIN', locationId: null },
-        { name: 'Ahmed Hassan', email: 'ahmed@dhako.com', password: 'ahmed123', role: 'INVENTORY_MANAGER', locationId: warehouseIds[0] },
-        { name: 'Fatima Mohamed', email: 'fatima@dhako.com', password: 'fatima123', role: 'BRANCH_MANAGER', locationId: branchIds[0] },
-        { name: 'Hassan Ali', email: 'hassan@dhako.com', password: 'hassan123', role: 'BRANCH_STAFF', locationId: branchIds[0] },
+        {
+          name: 'System Admin',
+          email: 'admin@dhako.com',
+          password: 'admin123',
+          role: 'ADMIN',
+          locationId: null
+        },
+        {
+          name: 'Ahmed Hassan (Inventory Manager)',
+          email: 'ahmed@dhako.com',
+          password: 'ahmed123',
+          role: 'INVENTORY_MANAGER',
+          locationId: warehouseIds[0]
+        },
+        {
+          name: 'Fatima Mohamed (Branch Manager)',
+          email: 'fatima@dhako.com',
+          password: 'fatima123',
+          role: 'BRANCH_MANAGER',
+          locationId: branchIds[0]
+        },
+        {
+          name: 'Hassan Ali (Branch Staff)',
+          email: 'hassan@dhako.com',
+          password: 'hassan123',
+          role: 'BRANCH_STAFF',
+          locationId: branchIds[0]
+        }
       ];
 
       for (const user of users) {
@@ -94,13 +94,23 @@ async function initializeDatabase() {
           [user.name, user.email, passwordHash, user.role, user.locationId]
         );
       }
-      console.log(`     ✅ ${users.length} users created\n`);
+      console.log(`   ✅ Created ${users.length} users`);
+      console.log('   Login credentials:');
+      console.log('     - admin@dhako.com / admin123 (ADMIN)');
+      console.log('     - ahmed@dhako.com / ahmed123 (INVENTORY_MANAGER)');
+      console.log('     - fatima@dhako.com / fatima123 (BRANCH_MANAGER)');
+      console.log('     - hassan@dhako.com / hassan123 (BRANCH_STAFF)');
+    } else {
+      console.log(`   ℹ️  Users already exist (${usersResult.rows[0].count})`);
     }
 
-    // Create products
-    const prodCount = await client.query('SELECT COUNT(*) as count FROM products');
-    if (prodCount.rows[0].count === 0) {
-      console.log('  📦 Creating products...');
+    // ═══════════════════════════════════════════════════════════════════════
+    // 3. SEED PRODUCTS
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log('\n📦 Seeding Products...');
+    const productsResult = await client.query('SELECT COUNT(*) as count FROM products');
+    
+    if (productsResult.rows[0].count === 0) {
       const products = [
         { name: 'Coca Cola 330ml', sku: 'SKU-001', category: 'Beverages', unit: 'can', qty_per_ctn: 24, cost_per_ctn: 240, sell_per_ctn: 360, min_stock_ctn: 5 },
         { name: 'Pepsi 330ml', sku: 'SKU-002', category: 'Beverages', unit: 'can', qty_per_ctn: 24, cost_per_ctn: 220, sell_per_ctn: 340, min_stock_ctn: 5 },
@@ -125,13 +135,19 @@ async function initializeDatabase() {
           [prod.name, prod.sku, prod.category, prod.unit, prod.qty_per_ctn, prod.cost_per_ctn, prod.sell_per_ctn, prod.min_stock_ctn, 'ACTIVE']
         );
       }
-      console.log(`     ✅ ${products.length} products created\n`);
+      console.log(`   ✅ Created ${products.length} products`);
+    } else {
+      console.log(`   ℹ️  Products already exist (${productsResult.rows[0].count})`);
     }
 
-    // Create stock movements (inventory)
-    const movCount = await client.query('SELECT COUNT(*) as count FROM stock_movements');
-    if (movCount.rows[0].count === 0) {
-      console.log('  📊 Creating initial stock...');
+    // ═══════════════════════════════════════════════════════════════════════
+    // 4. SEED INITIAL STOCK MOVEMENTS (populate inventory)
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log('\n📊 Seeding Initial Stock...');
+    const movementsResult = await client.query('SELECT COUNT(*) as count FROM stock_movements');
+    
+    if (movementsResult.rows[0].count === 0) {
+      // Get IDs we need
       const adminUser = await client.query('SELECT id FROM users WHERE email = $1', ['admin@dhako.com']);
       const userId = adminUser.rows[0].id;
 
@@ -143,10 +159,10 @@ async function initializeDatabase() {
 
       let movementCount = 0;
 
-      // Add stock to warehouses
+      // Add initial stock to warehouses
       for (const warehouse of warehouseIds) {
         for (const product of products.rows) {
-          const qty = Math.floor(Math.random() * 30) + 10;
+          const qty = Math.floor(Math.random() * 30) + 10; // 10-40 cartoons per product per warehouse
           await client.query(
             'INSERT INTO stock_movements (type, product_id, from_location_id, to_location_id, qty_ctn, cost_per_ctn, created_by, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, now())',
             ['STOCK_RECEIVED', product.id, null, warehouse, qty, product.cost_per_ctn, userId]
@@ -155,10 +171,10 @@ async function initializeDatabase() {
         }
       }
 
-      // Add stock to branches
+      // Add some stock to branches
       for (const branch of branchIds) {
-        for (const product of products.rows.slice(0, 10)) {
-          const qty = Math.floor(Math.random() * 15) + 3;
+        for (const product of products.rows.slice(0, 10)) { // Only first 10 products
+          const qty = Math.floor(Math.random() * 15) + 3; // 3-18 cartoons
           await client.query(
             'INSERT INTO stock_movements (type, product_id, from_location_id, to_location_id, qty_ctn, cost_per_ctn, created_by, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, now())',
             ['STOCK_RECEIVED', product.id, null, branch, qty, product.cost_per_ctn, userId]
@@ -167,13 +183,18 @@ async function initializeDatabase() {
         }
       }
 
-      console.log(`     ✅ ${movementCount} stock movements created\n`);
+      console.log(`   ✅ Created ${movementCount} stock movements`);
+    } else {
+      console.log(`   ℹ️  Stock movements already exist (${movementsResult.rows[0].count})`);
     }
 
-    // Create customers
-    const custCount = await client.query('SELECT COUNT(*) as count FROM customers');
-    if (custCount.rows[0].count === 0) {
-      console.log('  👥 Creating customers...');
+    // ═══════════════════════════════════════════════════════════════════════
+    // 5. SEED CUSTOMERS
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log('\n👥 Seeding Customers...');
+    const customersResult = await client.query('SELECT COUNT(*) as count FROM customers');
+    
+    if (customersResult.rows[0].count === 0) {
       const locations = await client.query('SELECT id FROM locations WHERE type = $1 ORDER BY created_at', ['BRANCH']);
       const branchIds = locations.rows.map(r => r.id);
 
@@ -192,54 +213,44 @@ async function initializeDatabase() {
           [cust.name, cust.phone, cust.email, cust.locationId]
         );
       }
-      console.log(`     ✅ ${customers.length} customers created\n`);
+      console.log(`   ✅ Created ${customers.length} customers`);
+    } else {
+      console.log(`   ℹ️  Customers already exist (${customersResult.rows[0].count})`);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // VERIFICATION
+    // 6. SUMMARY
     // ═══════════════════════════════════════════════════════════════════════
-    
-    console.log('📊 Verifying tables:');
-    const result = await client.query(`
-      SELECT table_name FROM information_schema.tables 
-      WHERE table_schema = 'public' ORDER BY table_name
-    `);
-    result.rows.forEach(row => console.log(`  ✓ ${row.table_name}`));
+    console.log('\n' + '═'.repeat(60));
+    console.log('📊 DATABASE SEEDING COMPLETE!\n');
 
-    console.log('\n📈 Data Summary:');
-    const counts = await Promise.all([
-      client.query('SELECT COUNT(*) as count FROM locations'),
-      client.query('SELECT COUNT(*) as count FROM users'),
-      client.query('SELECT COUNT(*) as count FROM products'),
-      client.query('SELECT COUNT(*) as count FROM stock_movements'),
-      client.query('SELECT COUNT(*) as count FROM customers'),
-    ]);
+    const counts = {
+      locations: await client.query('SELECT COUNT(*) as count FROM locations'),
+      users: await client.query('SELECT COUNT(*) as count FROM users'),
+      products: await client.query('SELECT COUNT(*) as count FROM products'),
+      movements: await client.query('SELECT COUNT(*) as count FROM stock_movements'),
+      customers: await client.query('SELECT COUNT(*) as count FROM customers'),
+    };
 
-    console.log(`  📍 Locations: ${counts[0].rows[0].count}`);
-    console.log(`  👤 Users: ${counts[1].rows[0].count}`);
-    console.log(`  📦 Products: ${counts[2].rows[0].count}`);
-    console.log(`  📊 Stock Movements: ${counts[3].rows[0].count}`);
-    console.log(`  👥 Customers: ${counts[4].rows[0].count}`);
+    console.log('📍 Locations:', counts.locations.rows[0].count);
+    console.log('👤 Users:', counts.users.rows[0].count);
+    console.log('📦 Products:', counts.products.rows[0].count);
+    console.log('📊 Stock Movements:', counts.movements.rows[0].count);
+    console.log('👥 Customers:', counts.customers.rows[0].count);
 
-    console.log('\n🎉 Database fully initialized!\n');
-    console.log('✅ Test Login Credentials:');
-    console.log('  Admin:              admin@dhako.com / admin123');
-    console.log('  Inventory Manager:  ahmed@dhako.com / ahmed123');
-    console.log('  Branch Manager:     fatima@dhako.com / fatima123');
-    console.log('  Branch Staff:       hassan@dhako.com / hassan123\n');
+    console.log('\n✅ Your database is now ready to use!\n');
+    console.log('🔐 Test Logins:');
+    console.log('   Admin:              admin@dhako.com / admin123');
+    console.log('   Inventory Manager:  ahmed@dhako.com / ahmed123');
+    console.log('   Branch Manager:     fatima@dhako.com / fatima123');
+    console.log('   Branch Staff:       hassan@dhako.com / hassan123\n');
 
   } catch (error) {
-    console.error('\n❌ Connection Error:', error.message);
-    console.error('\nMake sure:');
-    console.error('  - PostgreSQL database is available');
-    console.error('  - Connection string is correct');
-    console.error('  - Your firewall allows outbound connections\n');
+    console.error('\n❌ Seeding failed:', error.message);
     process.exit(1);
   } finally {
     await client.end();
   }
 }
 
-initializeDatabase();
-
-
+seedDatabase();
