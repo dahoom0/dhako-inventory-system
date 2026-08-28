@@ -1,10 +1,40 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
-import { SALES, PRODUCTS, fmt, saleRevenue, saleProfit, type Sale } from "../data/mock";
+import { productApi, salesApi } from "../utils/api";
 import { Card, PageHeader, Btn, Th, Td } from "../components/ui";
 
+// Helper functions
+function fmt(n: number): string {
+  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+}
+function saleRevenue(s: any): number { 
+  return s.qty_ctn * s.sell_price_per_ctn; 
+}
+function saleProfit(s: any): number { 
+  return s.qty_ctn * (s.sell_price_per_ctn - s.cost_per_ctn_at_sale); 
+}
+
+interface Sale {
+  id: string;
+  location_id: string;
+  date: string;
+  product_id: string;
+  qty_ctn: number;
+  sell_price_per_ctn: number;
+  cost_per_ctn_at_sale: number;
+  customer: string;
+}
+
+interface Product {
+  id: string;
+  name: string;
+  sku: string;
+  sell_per_ctn: number;
+  cost_per_ctn: number;
+}
+
 export default function Sales() {
-  const { user, getAccessibleLocations } = useAuth();
+  const { user } = useAuth();
   
   // Only ADMIN can access Sales
   if (user?.role !== "ADMIN") {
@@ -18,7 +48,10 @@ export default function Sales() {
     );
   }
 
-  const [sales, setSales] = useState<Sale[]>(SALES);
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [search, setSearch] = useState("");
   const [branchFilter, setBranchFilter] = useState("All");
