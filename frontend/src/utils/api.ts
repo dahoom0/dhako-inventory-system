@@ -411,4 +411,87 @@ export const analyticsApi = {
   getFinancialAnalytics: () => api.get<any>('/analytics/financial'),
 };
 
+/**
+ * Customers API endpoints
+ */
+export const customerApi = {
+  getCustomers: (params?: { page?: number; limit?: number; locationId?: string; search?: string }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.locationId) queryParams.append('locationId', params.locationId);
+    if (params?.search) queryParams.append('search', params.search);
+    
+    const query = queryParams.toString();
+    return api.get<any>(`/customers${query ? `?${query}` : ''}`);
+  },
+  
+  getCustomer: (id: string) => api.get<any>(`/customers/${id}`),
+  
+  createCustomer: (customerData: any) => api.post<any>('/customers', customerData),
+  
+  updateCustomer: (id: string, customerData: any) => api.patch<any>(`/customers/${id}`, customerData),
+  
+  deleteCustomer: (id: string) => api.delete<any>(`/customers/${id}`),
+};
+
+/**
+ * Expenses API endpoints
+ */
+export const expensesApi = {
+  getExpenses: (params?: { page?: number; limit?: number; locationId?: string; category?: string; dateFrom?: string; dateTo?: string }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.locationId) queryParams.append('locationId', params.locationId);
+    if (params?.category) queryParams.append('category', params.category);
+    if (params?.dateFrom) queryParams.append('dateFrom', params.dateFrom);
+    if (params?.dateTo) queryParams.append('dateTo', params.dateTo);
+    
+    const query = queryParams.toString();
+    return api.get<any>(`/expenses${query ? `?${query}` : ''}`);
+  },
+  
+  createExpense: (expenseData: any) => api.post<any>('/expenses', expenseData),
+};
+
+/**
+ * Debts API endpoints
+ */
+export const debtsApi = {
+  getDebts: (params?: { page?: number; limit?: number; locationId?: string; status?: string; customerId?: string }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.locationId) queryParams.append('locationId', params.locationId);
+    if (params?.status) queryParams.append('status', params.status);
+    if (params?.customerId) queryParams.append('customerId', params.customerId);
+    
+    const query = queryParams.toString();
+    return api.get<any>(`/debts${query ? `?${query}` : ''}`);
+  },
+  
+  createDebt: (debtData: any) => api.post<any>('/debts', debtData),
+  
+  recordPayment: (debtId: string, paymentData: any) => api.post<any>(`/debts/${debtId}/payment`, paymentData),
+};
+
+/**
+ * Inventory Adjustments API endpoints
+ */
+export const adjustmentsApi = {
+  getAdjustments: (params?: { page?: number; limit?: number; locationId?: string; reason?: string }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.locationId) queryParams.append('locationId', params.locationId);
+    if (params?.reason) queryParams.append('reason', params.reason);
+    
+    const query = queryParams.toString();
+    return api.get<any>(`/adjustments${query ? `?${query}` : ''}`);
+  },
+  
+  createAdjustment: (adjustmentData: any) => api.post<any>('/adjustments', adjustmentData),
+};
+
 export default api;

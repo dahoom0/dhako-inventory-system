@@ -12,6 +12,7 @@ const getNavItems = (role?: UserRole): NavItem[] => {
       { icon: "⬡", label: "Dashboard", page: "dashboard", roles: ["ADMIN"] },
       { icon: "🏭", label: "Warehouses", page: "location-management", roles: ["ADMIN"] },
       { icon: "📦", label: "Products", page: "product-management", roles: ["ADMIN"] },
+      { icon: "👥", label: "Customers", page: "customer-management", roles: ["ADMIN"] },
       { icon: "🚛", label: "Inventory", page: "inventory", roles: ["ADMIN"] },
       { icon: "🧾", label: "Sales", page: "sales", roles: ["ADMIN"] },
       { icon: "💸", label: "Expenses", page: "expenses", roles: ["ADMIN"] },

@@ -18,6 +18,7 @@ import SalesReport from "./pages/reports/SalesReport";
 import BranchReport from "./pages/reports/BranchReport";
 import InventoryManagerDashboard from "./pages/admin/InventoryManagerDashboard";
 import UserManagement from "./pages/admin/UserManagement";
+import CustomerManagement from "./pages/admin/CustomerManagement";
 import LocationManagement from "./pages/admin/LocationManagement";
 import ProductManagement from "./pages/admin/ProductManagement";
 import Login from "./pages/Login";
@@ -32,12 +33,14 @@ const PAGE_TITLES: Record<string, string> = {
   sales:              "Sales",
   expenses:           "Expenses",
   debts:              "Debt Management",
+  customers:          "Customers",
   "report-sales":     "Sales Report",
   "report-profit":    "Profit Report",
   "report-expenses":  "Expense Report",
   "report-branches":  "Branch Comparison",
   "report-products":  "Product Performance",
   "user-management":  "User Management",
+  "customer-management": "Customer Management",
   "location-management": "Location Management",
   "product-management": "Product Management",
   settings:           "Settings",
@@ -103,6 +106,7 @@ export default function App() {
         case "report-sales":         return <SalesReport />;
         case "report-branches":      return <BranchReport />;
         case "user-management":      return <UserManagement />;
+        case "customer-management":  return <CustomerManagement />;
         case "location-management":  return <LocationManagement />;
         case "product-management":   return <ProductManagement />;
         default:                     return <Placeholder title={PAGE_TITLES[page] || page} />;
