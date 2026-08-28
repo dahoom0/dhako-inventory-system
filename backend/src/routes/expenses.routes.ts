@@ -1,11 +1,11 @@
 import { Router } from "express";
 import { listExpenses, createExpense } from "../controllers/expenses.controller";
-import { authenticate } from "../middleware/auth";
+import { authenticate, requireLocationAccess } from "../middleware/auth";
 
 const router = Router();
 router.use(authenticate);
 
-router.get("/",  listExpenses);
-router.post("/", createExpense);
+router.get("/", requireLocationAccess, listExpenses);
+router.post("/", requireLocationAccess, createExpense);
 
 export default router;
