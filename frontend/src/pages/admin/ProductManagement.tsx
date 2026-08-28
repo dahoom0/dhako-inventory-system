@@ -1,6 +1,7 @@
 import React, { useState, useEffect, FormEvent } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useCategories } from "@/context/CategoryContext";
+import { productApi } from "@/utils/api";
 import { PageHeader, Btn, Card } from "@/components/ui";
 import { PrintButton } from "@/components/PrintButton";
 import { exportProductsToExcel } from "@/utils/excelExport";
@@ -66,90 +67,31 @@ const ProductManagement: React.FC = () => {
   const fetchProducts = async () => {
     try {
       setIsLoading(true);
-      // Mock data
-      const mockProducts: Product[] = [
-        {
-          id: "P001",
-          name: "Coca Cola 330ml",
-          sku: "CC330",
-          category: "Beverages",
-          unit: "can",
-          qtyPerCtn: 24,
-          costPerCtn: 22,
-          sellPerCtn: 30,
-          minStockCtn: 10,
-          status: "ACTIVE",
-          createdAt: "2026-08-01",
-        },
-        {
-          id: "P002",
-          name: "Mineral Water 600ml",
-          sku: "MW600",
-          category: "Beverages",
-          unit: "bottle",
-          qtyPerCtn: 24,
-          costPerCtn: 12,
-          sellPerCtn: 18,
-          minStockCtn: 15,
-          status: "ACTIVE",
-          createdAt: "2026-08-01",
-        },
-        {
-          id: "P003",
-          name: "Orange Juice 1L",
-          sku: "OJ1L",
-          category: "Beverages",
-          unit: "carton",
-          qtyPerCtn: 12,
-          costPerCtn: 35,
-          sellPerCtn: 48,
-          minStockCtn: 8,
-          status: "ACTIVE",
-          createdAt: "2026-08-01",
-        },
-        {
-          id: "P004",
-          name: "Instant Noodles",
-          sku: "IN001",
-          category: "Food",
-          unit: "pack",
-          qtyPerCtn: 40,
-          costPerCtn: 28,
-          sellPerCtn: 38,
-          minStockCtn: 12,
-          status: "ACTIVE",
-          createdAt: "2026-08-01",
-        },
-        {
-          id: "P005",
-          name: "Biscuits Assorted",
-          sku: "BA001",
-          category: "Snacks",
-          unit: "packet",
-          qtyPerCtn: 20,
-          costPerCtn: 18,
-          sellPerCtn: 26,
-          minStockCtn: 8,
-          status: "ACTIVE",
-          createdAt: "2026-08-01",
-        },
-        {
-          id: "P006",
-          name: "Cooking Oil 1L",
-          sku: "CO1L",
-          category: "Cooking",
-          unit: "bottle",
-          qtyPerCtn: 12,
-          costPerCtn: 55,
-          sellPerCtn: 72,
-          minStockCtn: 10,
-          status: "ACTIVE",
-          createdAt: "2026-08-01",
-        },
-      ];
-      setProducts(mockProducts);
+      setFormError("");
+      console.log("📦 Fetching products from API...");
+      const data = await productApi.getProducts();
+      
+      // Transform backend response to match Product interface
+      const transformedProducts: Product[] = (data || []).map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        sku: p.sku,
+        category: p.category,
+        unit: p.unit,
+        qtyPerCtn: p.qty_per_ctn,
+        costPerCtn: p.cost_per_ctn,
+        sellPerCtn: p.sell_per_ctn,
+        minStockCtn: p.min_stock_ctn,
+        status: p.status || "ACTIVE",
+        createdAt: p.created_at || new Date().toISOString(),
+      }));
+      
+      console.log("✅ Products fetched successfully:", transformedProducts);
+      setProducts(transformedProducts);
     } catch (err) {
-      console.error("Failed to fetch products:", err);
+      console.error("❌ Failed to fetch products:", err);
+      setFormError(err instanceof Error ? err.message : "Failed to fetch products");
+      setProducts([]);
     } finally {
       setIsLoading(false);
     }
@@ -180,42 +122,65 @@ const ProductManagement: React.FC = () => {
     }
 
     try {
+      const apiData = {
+        name: formData.name,
+        sku: formData.sku,
+        category: formData.category,
+        unit: formData.unit,
+        qty_per_ctn: parseInt(formData.qtyPerCtn),
+        cost_per_ctn: parseFloat(formData.costPerCtn),
+        sell_per_ctn: parseFloat(formData.sellPerCtn),
+        min_stock_ctn: parseInt(formData.minStockCtn),
+      };
+
       if (editingProduct) {
         // Update product
+        console.log("📝 Updating product:", editingProduct.id);
+        const updated = await productApi.updateProduct(editingProduct.id, apiData);
+        
+        // Transform response
+        const transformedProduct: Product = {
+          id: updated.id,
+          name: updated.name,
+          sku: updated.sku,
+          category: updated.category,
+          unit: updated.unit,
+          qtyPerCtn: updated.qty_per_ctn,
+          costPerCtn: updated.cost_per_ctn,
+          sellPerCtn: updated.sell_per_ctn,
+          minStockCtn: updated.min_stock_ctn,
+          status: updated.status || "ACTIVE",
+          createdAt: updated.created_at || new Date().toISOString(),
+        };
+
         setProducts(
-          products.map((p) =>
-            p.id === editingProduct.id
-              ? {
-                  ...p,
-                  name: formData.name,
-                  sku: formData.sku,
-                  category: formData.category,
-                  unit: formData.unit,
-                  qtyPerCtn: parseInt(formData.qtyPerCtn),
-                  costPerCtn: parseFloat(formData.costPerCtn),
-                  sellPerCtn: parseFloat(formData.sellPerCtn),
-                  minStockCtn: parseInt(formData.minStockCtn),
-                }
-              : p
-          )
+          products.map((p) => (p.id === editingProduct.id ? transformedProduct : p))
         );
+        console.log("✅ Product updated successfully");
       } else {
         // Create product
-        const newProduct: Product = {
-          id: Date.now().toString(),
-          name: formData.name,
-          sku: formData.sku,
-          category: formData.category,
-          unit: formData.unit,
-          qtyPerCtn: parseInt(formData.qtyPerCtn),
-          costPerCtn: parseFloat(formData.costPerCtn),
-          sellPerCtn: parseFloat(formData.sellPerCtn),
-          minStockCtn: parseInt(formData.minStockCtn),
-          status: "ACTIVE",
-          createdAt: new Date().toISOString(),
+        console.log("➕ Creating new product");
+        const created = await productApi.createProduct(apiData);
+        
+        // Transform response
+        const transformedProduct: Product = {
+          id: created.id,
+          name: created.name,
+          sku: created.sku,
+          category: created.category,
+          unit: created.unit,
+          qtyPerCtn: created.qty_per_ctn,
+          costPerCtn: created.cost_per_ctn,
+          sellPerCtn: created.sell_per_ctn,
+          minStockCtn: created.min_stock_ctn,
+          status: created.status || "ACTIVE",
+          createdAt: created.created_at || new Date().toISOString(),
         };
-        setProducts([...products, newProduct]);
+
+        setProducts([...products, transformedProduct]);
+        console.log("✅ Product created successfully");
       }
+
       setFormData({
         name: "",
         sku: "",
@@ -229,7 +194,9 @@ const ProductManagement: React.FC = () => {
       setEditingProduct(null);
       setShowForm(false);
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Operation failed");
+      const errorMsg = err instanceof Error ? err.message : "Operation failed";
+      console.error("❌ Error:", errorMsg);
+      setFormError(errorMsg);
     }
   };
 
@@ -291,11 +258,33 @@ const ProductManagement: React.FC = () => {
     }
   };
 
-  const handleDeactivate = (id: string) => {
+  const handleDeactivate = async (id: string) => {
     if (window.confirm("Are you sure you want to deactivate this product?")) {
-      setProducts(
-        products.map((p) => (p.id === id ? { ...p, status: "INACTIVE" } : p))
-      );
+      try {
+        const product = products.find(p => p.id === id);
+        if (!product) return;
+        
+        console.log("🔴 Deactivating product:", id);
+        await productApi.updateProduct(id, { 
+          name: product.name,
+          sku: product.sku,
+          category: product.category,
+          unit: product.unit,
+          qty_per_ctn: product.qtyPerCtn,
+          cost_per_ctn: product.costPerCtn,
+          sell_per_ctn: product.sellPerCtn,
+          min_stock_ctn: product.minStockCtn,
+          status: "INACTIVE"
+        });
+        
+        setProducts(
+          products.map((p) => (p.id === id ? { ...p, status: "INACTIVE" } : p))
+        );
+        console.log("✅ Product deactivated");
+      } catch (err) {
+        console.error("❌ Error deactivating product:", err);
+        setFormError(err instanceof Error ? err.message : "Failed to deactivate product");
+      }
     }
   };
 

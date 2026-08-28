@@ -1,7 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
-import { EXPENSES, fmt, type Expense } from "../data/mock";
+import { expensesApi } from "../utils/api";
 import { Card, PageHeader, Btn, Th, Td } from "../components/ui";
+
+interface Expense {
+  id: string;
+  amount: number;
+  category: string;
+  location_id: string;
+  date: string;
+  description: string;
+  created_by: string;
+}
 
 const CAT_COLORS: Record<string, string> = {
   Rent: "#1e3a8a", Electricity: "#d97706", Transport: "#7c3aed", Staff: "#16a34a",
@@ -9,6 +19,8 @@ const CAT_COLORS: Record<string, string> = {
 };
 
 const CATEGORIES = ["Transport", "Electricity", "Rent", "Staff", "Food", "Maintenance", "Supplies", "Other"] as const;
+
+const fmt = (n: number): string => `$${n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
 export default function Expenses() {
   const { user, getAccessibleLocations } = useAuth();
@@ -25,12 +37,35 @@ export default function Expenses() {
     );
   }
 
-  const [expenses] = useState<Expense[]>(EXPENSES);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [branchFilter, setBranchFilter] = useState("All");
   const [catFilter, setCatFilter] = useState("All");
 
+  useEffect(() => {
+    fetchExpenses();
+  }, []);
+
+  const fetchExpenses = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      console.log("💰 Fetching expenses from API...");
+      const data = await expensesApi.getExpenses();
+      console.log("✅ Expenses fetched:", data);
+      setExpenses(data || []);
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Failed to fetch expenses";
+      console.error("❌ Error:", errorMsg);
+      setError(errorMsg);
+      setExpenses([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const filtered = expenses.filter(e =>
-    (branchFilter === "All" || e.branch === branchFilter) &&
     (catFilter === "All" || e.category === catFilter)
   );
 
@@ -40,37 +75,41 @@ export default function Expenses() {
     cat, total: expenses.filter(e => e.category === cat).reduce((s, e) => s + e.amount, 0)
   })).sort((a, b) => b.total - a.total);
 
-  const byBranch = ["Branch 1", "Branch 2", "Branch 3"].map(branch => ({
-    branch, total: expenses.filter(e => e.branch === branch).reduce((s, e) => s + e.amount, 0)
-  }));
+  if (loading) {
+    return (
+      <div className="p-6">
+        <Card className="p-8 text-center">
+          <div style={{ color: "#64748b" }}>Loading expenses...</div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <Card className="p-8 text-center">
+          <div style={{ color: "#dc2626" }}>Error: {error}</div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-6">
       <PageHeader
         title="Expenses"
-        subtitle="Branch operating expenses"
+        subtitle={`${expenses.length} expenses · ${fmt(expenses.reduce((s, e) => s + e.amount, 0))} total`}
         action={<Btn>+ Add Expense</Btn>}
       />
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        {byBranch.map(b => (
-          <Card key={b.branch} className="p-4">
-            <div className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: "#94a3b8" }}>{b.branch}</div>
-            <div className="text-lg font-bold" style={{ color: "#d97706" }}>{fmt(b.total)}</div>
-          </Card>
-        ))}
-        <Card className="p-4">
-          <div className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: "#94a3b8" }}>Total</div>
-          <div className="text-lg font-bold" style={{ color: "#1e3a8a" }}>{fmt(expenses.reduce((s, e) => s + e.amount, 0))}</div>
-        </Card>
-      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
         <Card className="p-4 md:col-span-2">
           <div className="text-sm font-semibold mb-3" style={{ color: "#1e3a8a" }}>By Category</div>
           <div className="space-y-2">
             {byCategory.filter(c => c.total > 0).map(c => {
-              const pct = (c.total / expenses.reduce((s, e) => s + e.amount, 0)) * 100;
+              const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
+              const pct = totalExpenses > 0 ? (c.total / totalExpenses) * 100 : 0;
               return (
                 <div key={c.cat}>
                   <div className="flex justify-between text-xs mb-1">
@@ -101,10 +140,6 @@ export default function Expenses() {
 
       <Card>
         <div className="p-4 flex flex-wrap gap-3 border-b" style={{ borderColor: "#e2e8f0" }}>
-          <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)}
-            className="rounded-lg px-3 py-2 text-sm" style={{ border: "1px solid #e2e8f0", color: "#374151" }}>
-            {["All", "Branch 1", "Branch 2", "Branch 3"].map(b => <option key={b}>{b}</option>)}
-          </select>
           <select value={catFilter} onChange={e => setCatFilter(e.target.value)}
             className="rounded-lg px-3 py-2 text-sm" style={{ border: "1px solid #e2e8f0", color: "#374151" }}>
             {["All", ...CATEGORIES].map(c => <option key={c}>{c}</option>)}
@@ -117,26 +152,30 @@ export default function Expenses() {
           <table className="w-full">
             <thead>
               <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
-                {["ID", "Date", "Branch", "Category", "Description", "Amount", "User"].map(h => <Th key={h}>{h}</Th>)}
+                {["ID", "Date", "Category", "Description", "Amount"].map(h => <Th key={h}>{h}</Th>)}
               </tr>
             </thead>
             <tbody>
-              {[...filtered].reverse().map(e => (
-                <tr key={e.id} style={{ borderBottom: "1px solid #f8fafc" }}>
-                  <Td mono><span style={{ color: "#94a3b8" }}>{e.id}</span></Td>
-                  <Td mono><span style={{ color: "#64748b" }}>{e.date}</span></Td>
-                  <Td><span style={{ color: "#1e3a8a", fontWeight: 600 }}>{e.branch}</span></Td>
-                  <Td>
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
-                      style={{ background: `${CAT_COLORS[e.category]}18`, color: CAT_COLORS[e.category] || "#64748b" }}>
-                      {e.category}
-                    </span>
-                  </Td>
-                  <Td>{e.description}</Td>
-                  <Td mono><span className="font-bold" style={{ color: "#d97706" }}>{fmt(e.amount)}</span></Td>
-                  <Td><span style={{ color: "#94a3b8" }}>{e.user}</span></Td>
+              {filtered.length === 0 ? (
+                <tr>
+                  <Td colSpan={5} style={{ textAlign: "center", color: "#94a3b8" }}>No expenses found</Td>
                 </tr>
-              ))}
+              ) : (
+                [...filtered].reverse().map(e => (
+                  <tr key={e.id} style={{ borderBottom: "1px solid #f8fafc" }}>
+                    <Td mono><span style={{ color: "#94a3b8" }}>{e.id.slice(0, 8)}</span></Td>
+                    <Td mono><span style={{ color: "#64748b" }}>{e.date}</span></Td>
+                    <Td>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
+                        style={{ background: `${CAT_COLORS[e.category]}18`, color: CAT_COLORS[e.category] || "#64748b" }}>
+                        {e.category}
+                      </span>
+                    </Td>
+                    <Td>{e.description}</Td>
+                    <Td mono><span className="font-bold" style={{ color: "#d97706" }}>{fmt(e.amount)}</span></Td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

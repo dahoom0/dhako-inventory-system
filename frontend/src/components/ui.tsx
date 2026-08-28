@@ -102,9 +102,9 @@ export function Th({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function Td({ children, mono = false, right = false, className = "" }: { children: React.ReactNode; mono?: boolean; right?: boolean; className?: string }) {
+export function Td({ children, mono = false, right = false, className = "", colSpan }: { children: React.ReactNode; mono?: boolean; right?: boolean; className?: string; colSpan?: number }) {
   return (
-    <td className={`px-4 py-3 text-sm ${mono ? "font-mono" : ""} ${right ? "text-right" : ""} ${className}`} style={{ color: "#374151" }}>
+    <td colSpan={colSpan} className={`px-4 py-3 text-sm ${mono ? "font-mono" : ""} ${right ? "text-right" : ""} ${className}`} style={{ color: "#374151" }}>
       {children}
     </td>
   );
