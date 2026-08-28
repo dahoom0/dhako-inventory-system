@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authenticate, requireLocationAccess } from "../middleware/auth";
+import { asyncHandler } from "../middleware/errorHandler";
 import {
   listCustomers,
   getCustomer,
@@ -14,18 +15,18 @@ const router = Router();
 router.use(authenticate);
 
 // List customers (filtered by accessible locations)
-router.get("/", requireLocationAccess, listCustomers);
+router.get("/", requireLocationAccess, asyncHandler(listCustomers));
 
 // Get a specific customer
-router.get("/:id", requireLocationAccess, getCustomer);
+router.get("/:id", requireLocationAccess, asyncHandler(getCustomer));
 
 // Create a new customer
-router.post("/", requireLocationAccess, createCustomer);
+router.post("/", requireLocationAccess, asyncHandler(createCustomer));
 
 // Update a customer
-router.patch("/:id", requireLocationAccess, updateCustomer);
+router.patch("/:id", requireLocationAccess, asyncHandler(updateCustomer));
 
 // Delete a customer (admin only)
-router.delete("/:id", requireLocationAccess, deleteCustomer);
+router.delete("/:id", requireLocationAccess, asyncHandler(deleteCustomer));
 
 export default router;
