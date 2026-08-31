@@ -2,17 +2,16 @@ import { Request, Response } from "express";
 import { db } from "../config/db";
 import { Transfer, TransferItem, PaginatedResult } from "../models/types";
 
-// POST - Create a new transfer
+// POST - Create a transfer and immediately process it (move stock now)
 export const createTransfer = async (req: Request, res: Response) => {
   const client = await db.connect();
 
   try {
-    const { fromLocationId, toLocationId, items } = req.body;
+    const { fromLocationId, toLocationId, items, notes } = req.body;
     const userId = (req as any).user.userId;
 
-    // Validate input
     if (!fromLocationId || !toLocationId || !items || items.length === 0) {
-      await client.release();
+      client.release();
       return res.status(400).json({
         success: false,
         error: "Missing required fields: fromLocationId, toLocationId, items",
@@ -20,7 +19,7 @@ export const createTransfer = async (req: Request, res: Response) => {
     }
 
     if (fromLocationId === toLocationId) {
-      await client.release();
+      client.release();
       return res.status(400).json({
         success: false,
         error: "Source and destination locations must be different",
@@ -29,95 +28,90 @@ export const createTransfer = async (req: Request, res: Response) => {
 
     // Verify both locations exist
     const locCheck = await client.query(
-      `SELECT id FROM locations WHERE id = $1 OR id = $2`,
+      `SELECT id FROM locations WHERE id IN ($1, $2)`,
       [fromLocationId, toLocationId]
     );
-
     if (locCheck.rows.length !== 2) {
-      await client.release();
+      client.release();
       return res.status(404).json({ success: false, error: "One or both locations not found" });
     }
 
-    // Begin transaction
     await client.query("BEGIN");
 
     try {
-      // Validate all products exist and have sufficient stock
+      // Validate products and stock levels
       for (const item of items) {
-        // Check product exists
-        const prodCheck = await client.query(`SELECT id FROM products WHERE id = $1`, [
-          item.productId,
-        ]);
-
+        const prodCheck = await client.query(
+          `SELECT id FROM products WHERE id = $1`, [item.productId]
+        );
         if (prodCheck.rows.length === 0) {
           await client.query("ROLLBACK");
-          await client.release();
-          return res.status(404).json({
-            success: false,
-            error: `Product ${item.productId} not found`,
-          });
+          client.release();
+          return res.status(404).json({ success: false, error: `Product ${item.productId} not found` });
         }
 
-        // Check sufficient stock at source location
-        const stockCheck = await client.query<{ qty_ctn: string }>(
-          `SELECT COALESCE(qty_ctn, 0) as qty_ctn
-           FROM inventory_levels
+        const stockCheck = await client.query(
+          `SELECT COALESCE(qty_ctn, 0) AS qty_ctn FROM inventory_levels
            WHERE product_id = $1 AND location_id = $2`,
           [item.productId, fromLocationId]
         );
-
-        const availableStock = parseInt(stockCheck.rows[0]?.qty_ctn || "0");
-
-        if (availableStock < item.qtyCtn) {
+        const available = parseInt(stockCheck.rows[0]?.qty_ctn || "0");
+        if (available < item.qtyCtn) {
           await client.query("ROLLBACK");
-          await client.release();
+          client.release();
           return res.status(409).json({
             success: false,
-            error: `Insufficient stock for product ${item.productId}. Available: ${availableStock}, Requested: ${item.qtyCtn}`,
+            error: `Insufficient stock. Available: ${available} CTN, Requested: ${item.qtyCtn} CTN`,
           });
         }
       }
 
-      // Create transfer record
-      const transferResult = await client.query<{ id: string; created_at: string }>(
-        `INSERT INTO transfers (
-          from_location_id,
-          to_location_id,
-          status,
-          requested_by,
-          created_at
-        ) VALUES ($1, $2, $3, $4, now())
+      // Create transfer record — immediately RECEIVED (stock moves now)
+      const transferResult = await client.query(
+        `INSERT INTO transfers (from_location_id, to_location_id, status, requested_by, sent_at, received_at, created_at)
+         VALUES ($1, $2, 'RECEIVED', $3, now(), now(), now())
          RETURNING id, created_at`,
-        [fromLocationId, toLocationId, "PENDING", userId]
+        [fromLocationId, toLocationId, userId]
       );
-
       const transferId = transferResult.rows[0].id;
 
-      // Create transfer items
+      // Insert transfer items and create stock movements for each
       for (const item of items) {
         await client.query(
-          `INSERT INTO transfer_items (transfer_id, product_id, qty_ctn)
-           VALUES ($1, $2, $3)`,
+          `INSERT INTO transfer_items (transfer_id, product_id, qty_ctn) VALUES ($1, $2, $3)`,
           [transferId, item.productId, item.qtyCtn]
+        );
+
+        const costRow = await client.query(
+          `SELECT cost_per_ctn FROM products WHERE id = $1`, [item.productId]
+        );
+        const costPerCtn = parseFloat(costRow.rows[0]?.cost_per_ctn || "0");
+
+        // Single stock movement: from_location_id = source, to_location_id = destination
+        // The inventory_levels view subtracts from_location rows and adds to_location rows
+        // So one WAREHOUSE_TRANSFER row handles both sides automatically
+        await client.query(
+          `INSERT INTO stock_movements
+             (type, product_id, from_location_id, to_location_id, qty_ctn, cost_per_ctn, reference_id, notes, created_by)
+           VALUES ('WAREHOUSE_TRANSFER', $1, $2, $3, $4, $5, $6, $7, $8)`,
+          [item.productId, fromLocationId, toLocationId, item.qtyCtn, costPerCtn, transferId, notes || "Stock transfer", userId]
         );
       }
 
-      // Commit transaction
       await client.query("COMMIT");
 
       return res.status(201).json({
         success: true,
         data: {
           transferId,
-          status: "PENDING",
+          status: "RECEIVED",
           itemCount: items.length,
-          timestamp: transferResult.rows[0].created_at,
-          message: "Transfer created successfully",
+          message: "Transfer completed — stock has been moved",
         },
       });
-    } catch (error) {
+    } catch (err) {
       await client.query("ROLLBACK");
-      throw error;
+      throw err;
     }
   } catch (error) {
     console.error("Error creating transfer:", error);

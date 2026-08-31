@@ -21,19 +21,51 @@ export default function Warehouses() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [productsData, locationsData] = await Promise.all([
+        const [productsResponse, locationsData] = await Promise.all([
           productApi.getProducts(),
           locationApi.getLocations(),
         ]);
-        
-        setProducts(productsData);
+
+        console.log("📦 Raw products response:", productsResponse);
+
+        // Products API returns paginated response: { success, data: { data: [...], total, page, ... } }
+        // Extract the products array from nested structure
+        let productsData = [];
+        if (productsResponse?.data?.data && Array.isArray(productsResponse.data.data)) {
+          // Paginated response
+          productsData = productsResponse.data.data;
+        } else if (Array.isArray(productsResponse?.data)) {
+          // Direct array
+          productsData = productsResponse.data;
+        } else if (Array.isArray(productsResponse)) {
+          // Already an array
+          productsData = productsResponse;
+        }
+
+        // IMPORTANT: Only show products that have inventory (stock movements)
+        // Filter out products with no inventory_by_location or zero stock
+        const productsWithInventory = productsData.filter((p: any) => {
+          const hasInventory = p.inventory_by_location && 
+                             Array.isArray(p.inventory_by_location) && 
+                             p.inventory_by_location.length > 0 &&
+                             p.inventory_by_location.some((inv: any) => inv.quantity_ctns > 0);
+          return hasInventory;
+        });
+
+        console.log("✅ Extracted products data:", productsWithInventory);
+        setProducts(productsWithInventory);
+
         setLocations(locationsData);
-        
+
         // Filter warehouses only
         const warehouseLocations = locationsData.filter((loc: any) => loc.type === "WAREHOUSE");
         setWarehouses(warehouseLocations);
-        
-        console.log("Warehouses data:", { products: productsData, locations: locationsData });
+
+        console.log("📊 Warehouses data:", { 
+          productsCount: productsData.length, 
+          warehousesCount: warehouseLocations.length,
+          firstProduct: productsData[0]
+        });
         setError(null);
       } catch (err) {
         console.error("Failed to fetch warehouse data:", err);
@@ -48,6 +80,18 @@ export default function Warehouses() {
 
   if (loading) return <div className="p-6 text-center">Loading warehouse data...</div>;
   if (error) return <div className="p-6 text-red-600">{error}</div>;
+
+  if (products.length === 0) {
+    return (
+      <div className="p-6">
+        <PageHeader title="Warehouses" subtitle="Central warehouse inventory overview" />
+        <Card className="p-8 text-center">
+          <p className="text-gray-600 mb-4">No products found</p>
+          <p className="text-sm text-gray-500">Products will appear here once stock movements are recorded.</p>
+        </Card>
+      </div>
+    );
+  }
 
   // Calculate warehouse statistics from inventory data
   const whStats = warehouses.map((wh: any) => {
@@ -130,12 +174,12 @@ export default function Warehouses() {
                   <tr key={p.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
                     <td className="px-4 py-3">
                       <div className="font-semibold" style={{ color: "#1e3a8a" }}>{p.name}</div>
-                      <div className="text-xs" style={{ color: "#94a3b8" }}>{p.sku} · {p.qty_per_ctn} units/CTN</div>
+                      <div className="text-xs" style={{ color: "#94a3b8" }}>{p.sku} · {p.qtyPerCtn || p.qty_per_ctn} units/CTN</div>
                     </td>
                     {warehouses.map((w: any) => {
                       const inventory = p.inventory_by_location?.find((inv: any) => inv.location_id === w.id);
                       const qty = inventory?.quantity_ctns || 0;
-                      const st = stockStatus(qty, p.min_stock || 0);
+                      const st = stockStatus(qty, p.minStockCtn || p.min_stock || 0);
                       return (
                         <td key={w.id} className="text-center px-4 py-3 font-mono font-semibold" style={{ color: st === "out" ? "#dc2626" : st === "low" ? "#ca8a04" : "#374151" }}>
                           {qty} CTN
@@ -143,7 +187,7 @@ export default function Warehouses() {
                       );
                     })}
                     <td className="text-center px-4 py-3 font-mono font-bold" style={{ color: "#1e3a8a" }}>{whTotal}</td>
-                    <td className="text-right px-4 py-3 font-mono" style={{ color: "#64748b" }}>{fmt(whTotal * (p.cost_per_ctn || 0))}</td>
+                    <td className="text-right px-4 py-3 font-mono" style={{ color: "#64748b" }}>{fmt(whTotal * (p.costPerCtn || p.cost_per_ctn || 0))}</td>
                   </tr>
                 );
               })}
@@ -174,7 +218,7 @@ export default function Warehouses() {
                       const inventory = p.inventory_by_location?.find((inv: any) => inv.location_id === w.id);
                       return s + (inventory?.quantity_ctns || 0);
                     }, 0);
-                    return sum + (total * (p.cost_per_ctn || 0));
+                    return sum + (total * (p.costPerCtn || p.cost_per_ctn || 0));
                   }, 0))}
                 </td>
               </tr>

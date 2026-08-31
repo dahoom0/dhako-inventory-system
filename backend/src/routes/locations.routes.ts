@@ -8,6 +8,8 @@ import {
   getBranches,
   createLocation,
   updateLocation,
+  deactivateLocation,
+  deleteLocation,
   getLocationStats,
 } from "../controllers/locations.controller";
 
@@ -21,7 +23,9 @@ router.get("/:id", authenticate, getLocationById);
 router.get("/:id/stats", authenticate, getLocationStats);
 
 // Admin-only routes
-router.post("/", authenticate, requireRole("ADMIN", "STORE_MANAGER"), createLocation);
+router.post("/", authenticate, requireRole("ADMIN"), createLocation);
 router.patch("/:id", authenticate, requireRole("ADMIN"), updateLocation);
+router.patch("/:id/deactivate", authenticate, requireRole("ADMIN"), deactivateLocation);
+router.delete("/:id", authenticate, requireRole("ADMIN"), deleteLocation);
 
 export default router;

@@ -17,9 +17,10 @@ router.get("/", authenticate, getProducts);
 router.get("/categories", authenticate, getCategories);
 router.get("/:id", authenticate, getProductById);
 
-// Admin/Store Manager routes
-router.post("/", authenticate, requireRole("ADMIN", "STORE_MANAGER"), createProduct);
-router.patch("/:id", authenticate, requireRole("ADMIN", "STORE_MANAGER"), updateProduct);
+// Admin/Inventory Manager routes
+router.post("/", authenticate, requireRole("ADMIN", "INVENTORY_MANAGER", "STORE_MANAGER"), createProduct);
+router.put("/:id", authenticate, requireRole("ADMIN", "INVENTORY_MANAGER", "STORE_MANAGER"), updateProduct);
+router.patch("/:id", authenticate, requireRole("ADMIN", "INVENTORY_MANAGER", "STORE_MANAGER"), updateProduct);
 router.delete("/:id", authenticate, requireRole("ADMIN"), deleteProduct);
 
 export default router;

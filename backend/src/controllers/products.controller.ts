@@ -17,6 +17,42 @@ const mapRowToProduct = (row: any): Product => ({
   updatedAt: new Date(row.updated_at),
 });
 
+// Map product row with inventory data
+const mapRowToProductWithInventory = (row: any, inventoryRows: any[]): Product => {
+  const product: Product = {
+    id: row.id,
+    name: row.name,
+    sku: row.sku,
+    category: row.category,
+    unit: row.unit,
+    qtyPerCtn: parseInt(row.qty_per_ctn),
+    costPerCtn: parseFloat(row.cost_per_ctn),
+    sellPerCtn: parseFloat(row.sell_per_ctn),
+    minStockCtn: parseInt(row.min_stock_ctn),
+    status: row.status,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+  };
+  
+  // Add inventory_by_location data
+  const productInventory = inventoryRows.filter(
+    (inv) => inv.product_id === row.id
+  );
+  
+  if (productInventory.length > 0) {
+    product.inventory_by_location = productInventory.map((inv) => ({
+      location_id: inv.location_id,
+      location_name: inv.location_name,
+      location_type: inv.location_type,
+      quantity_ctns: parseInt(inv.qty_ctn),
+      quantity_units: parseInt(inv.qty_units),
+      cost_value: parseFloat(inv.cost_value),
+    }));
+  }
+  
+  return product;
+};
+
 // GET all products (paginated, searchable)
 export const getProducts = async (req: Request, res: Response) => {
   try {
@@ -68,10 +104,37 @@ export const getProducts = async (req: Request, res: Response) => {
       dataParams
     );
 
-    const products = result.rows.map(mapRowToProduct);
+    const products = result.rows.map((row) => mapRowToProduct(row));
+
+    // Get inventory data for all products (single query for efficiency)
+    const productIds = products.map(p => p.id);
+    let inventoryResult = { rows: [] } as any;
+    
+    if (productIds.length > 0) {
+      const placeholders = productIds.map((_, i) => `$${i + 1}`).join(", ");
+      inventoryResult = await db.query(
+        `SELECT 
+          il.product_id,
+          l.id as location_id,
+          l.name as location_name,
+          l.type as location_type,
+          COALESCE(il.qty_ctn, 0) as qty_ctn,
+          COALESCE(il.qty_units, 0) as qty_units,
+          COALESCE(il.cost_value, 0) as cost_value
+         FROM inventory_levels il
+         JOIN locations l ON l.id = il.location_id
+         WHERE il.product_id IN (${placeholders}) AND il.qty_ctn > 0`,
+        productIds
+      );
+    }
+
+    // Map products with inventory data
+    const productsWithInventory = result.rows.map((row) => 
+      mapRowToProductWithInventory(row, inventoryResult.rows)
+    );
 
     const paginatedResult: PaginatedResult<Product> = {
-      data: products,
+      data: productsWithInventory,
       total,
       page,
       pageSize,
@@ -291,24 +354,34 @@ export const updateProduct = async (req: Request, res: Response) => {
   }
 };
 
-// DELETE product (soft delete - set to INACTIVE)
+// DELETE product (hard delete - removes from database)
 export const deleteProduct = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
     // Check if product exists
-    const checkResult = await db.query(`SELECT id FROM products WHERE id = $1`, [id]);
+    const checkResult = await db.query(`SELECT id, name FROM products WHERE id = $1`, [id]);
 
     if (checkResult.rows.length === 0) {
       return res.status(404).json({ success: false, error: "Product not found" });
     }
 
-    // Soft delete: set status to INACTIVE
-    await db.query(`UPDATE products SET status = 'INACTIVE', updated_at = now() WHERE id = $1`, [
-      id,
-    ]);
+    const productName = checkResult.rows[0].name;
 
-    return res.json({ success: true, data: { id, message: "Product deactivated" } });
+    // Check if product has stock movements
+    const movementCheck = await db.query(`SELECT COUNT(*) as count FROM stock_movements WHERE product_id = $1`, [id]);
+    
+    if (parseInt(movementCheck.rows[0].count) > 0) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "Cannot delete product with existing stock movements. Please clear stock first." 
+      });
+    }
+
+    // Hard delete: remove from database
+    await db.query(`DELETE FROM products WHERE id = $1`, [id]);
+
+    return res.json({ success: true, data: { id, name: productName, message: "Product deleted successfully" } });
   } catch (error) {
     console.error("Error deleting product:", error);
     return res.status(500).json({ success: false, error: "Failed to delete product" });

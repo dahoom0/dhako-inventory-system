@@ -12,6 +12,7 @@ import expenseRoutes     from "./expenses.routes";
 import debtRoutes        from "./debts.routes";
 import analyticsRoutes   from "./analytics.routes";
 import customersRoutes   from "./customers.routes";
+import categoriesRoutes  from "./categories.routes";
 
 const router = Router();
 
@@ -28,5 +29,6 @@ router.use("/sales",           salesRoutes);
 router.use("/expenses",        expenseRoutes);
 router.use("/debts",           debtRoutes);
 router.use("/analytics",       analyticsRoutes);
+router.use("/categories",      categoriesRoutes);
 
 export default router;

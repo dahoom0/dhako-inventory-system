@@ -1,25 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { useAuth } from "../context/AuthContext";
-import { PageHeader, Card, Btn, Th, Td } from "@/components/ui";
+import { Card } from "@/components/ui";
 import InventoryManager from "./inventory/InventoryManager";
 
 const BranchDashboard: React.FC = () => {
-  const { user, getAccessibleLocations } = useAuth();
-  const [branchName, setBranchName] = useState("Your Branch");
+  const { user } = useAuth();
 
-  useEffect(() => {
-    // Get branch name based on user's assigned branch
-    if (user?.role === "BRANCH_MANAGER" && user?.locationId) {
-      const branchLocations: Record<string, string> = {
-        "b1": "Branch Mogadishu",
-        "b2": "Branch Hargeisa",
-        "b3": "Branch Kismayo",
-      };
-      setBranchName(branchLocations[user.locationId] || "Your Branch");
-    }
-  }, [user]);
-
-  // Only BRANCH_MANAGER can access this dashboard
   if (user?.role !== "BRANCH_MANAGER") {
     return (
       <div className="p-6">
@@ -32,6 +18,9 @@ const BranchDashboard: React.FC = () => {
       </div>
     );
   }
+
+  // Use the real location name from the user object (comes from the backend auth/me)
+  const branchName = (user as any)?.locationName || "Your Branch";
 
   return (
     <div>

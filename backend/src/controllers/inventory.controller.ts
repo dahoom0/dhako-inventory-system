@@ -490,3 +490,137 @@ export const getStockLevel = async (req: Request, res: Response) => {
     return res.status(500).json({ success: false, error: "Failed to fetch stock level" });
   }
 };
+
+// POST receive stock (add inventory to existing or new product)
+export const receiveStock = async (req: Request, res: Response) => {
+  try {
+    const {
+      productId, // null for new product, existing product ID for adding stock
+      name, // required only if creating new product
+      sku, // required only if creating new product
+      category, // required only if creating new product
+      unit, // required only if creating new product
+      qtyPerCtn, // required only if creating new product
+      costPerCtn, // required only if creating new product
+      sellPerCtn, // required only if creating new product
+      minStockCtn, // required only if creating new product
+      qtyCtn,
+      locationId,
+      reason,
+      notes,
+    } = req.body;
+
+    // Validate required fields
+    if (!qtyCtn || qtyCtn <= 0) {
+      return res.status(400).json({ success: false, error: "Quantity must be greater than 0" });
+    }
+
+    if (!locationId) {
+      return res.status(400).json({ success: false, error: "Location is required" });
+    }
+
+    // Get user ID from auth middleware
+    const authUser = (req as any).user;
+    const userId = authUser?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
+
+    let productIdToUse: string;
+    let productCreated = false;
+
+    // Check if this is a new product or existing product
+    if (!productId) {
+      // Create new product
+      if (!name || !sku || !category || !unit || qtyPerCtn === undefined || costPerCtn === undefined || sellPerCtn === undefined) {
+        return res.status(400).json({ success: false, error: "Product fields required for new product" });
+      }
+
+      // Check if SKU already exists
+      const existingSkuCheck = await db.query(`SELECT id FROM products WHERE sku = $1`, [sku]);
+      if (existingSkuCheck.rows.length > 0) {
+        return res.status(409).json({ success: false, error: "Product with this SKU already exists. Use the product ID to add stock." });
+      }
+
+      // Create product
+      const productResult = await db.query<{ id: string; created_at: string; updated_at: string }>(
+        `INSERT INTO products (
+          name, sku, category, unit, qty_per_ctn, cost_per_ctn, sell_per_ctn, min_stock_ctn
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id, created_at, updated_at`,
+        [name, sku, category, unit, parseInt(qtyPerCtn), costPerCtn, sellPerCtn, parseInt(minStockCtn) || 0]
+      );
+
+      productIdToUse = productResult.rows[0].id;
+      productCreated = true;
+      console.log(`Created new product: ${productIdToUse} - ${name}`);
+    } else {
+      // Verify product exists
+      const productCheck = await db.query(`SELECT id, name, sku FROM products WHERE id = $1`, [productId]);
+      if (productCheck.rows.length === 0) {
+        return res.status(404).json({ success: false, error: "Product not found" });
+      }
+      productIdToUse = productId;
+    }
+
+    // Create stock movement
+    const movementResult = await db.query<{
+      id: string;
+      created_at: string;
+    }>(
+      `INSERT INTO stock_movements (
+        type, product_id, from_location_id, to_location_id, qty_ctn, cost_per_ctn, reason, notes, created_by, created_at
+      ) VALUES ($1, $2, NULL, $3, $4, $5, $6, $7, $8, now())
+       RETURNING id, created_at`,
+      [
+        productCreated ? 'STOCK_RECEIVED' : 'STOCK_RECEIVED',
+        productIdToUse,
+        locationId,
+        qtyCtn,
+        productCreated ? costPerCtn : (await db.query(`SELECT cost_per_ctn FROM products WHERE id = $1`, [productIdToUse])).rows[0].cost_per_ctn,
+        reason || 'Stock received',
+        notes || '',
+        userId
+      ]
+    );
+
+    // Get updated inventory for the location
+    const inventoryResult = await db.query<{
+      qty_ctn: string;
+      qty_units: string;
+      cost_value: string;
+    }>(
+      `SELECT 
+        COALESCE(qty_ctn, 0) as qty_ctn,
+        COALESCE(qty_units, 0) as qty_units,
+        COALESCE(cost_value, 0) as cost_value
+       FROM inventory_levels
+       WHERE product_id = $1 AND location_id = $2`,
+      [productIdToUse, locationId]
+    );
+
+    const inventory = inventoryResult.rows.length > 0
+      ? {
+          qtyCtn: parseInt(inventoryResult.rows[0].qty_ctn),
+          qtyUnits: parseInt(inventoryResult.rows[0].qty_units),
+          costValue: parseFloat(inventoryResult.rows[0].cost_value),
+        }
+      : { qtyCtn: 0, qtyUnits: 0, costValue: 0 };
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        stockMovementId: movementResult.rows[0].id,
+        productId: productIdToUse,
+        productCreated,
+        inventory,
+        locationId,
+        qtyCtn,
+        message: productCreated ? 'Product created and stock received' : 'Stock received'
+      }
+    });
+  } catch (error) {
+    console.error("Error receiving stock:", error);
+    return res.status(500).json({ success: false, error: "Failed to receive stock" });
+  }
+};

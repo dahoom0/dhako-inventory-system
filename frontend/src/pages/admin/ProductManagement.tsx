@@ -1,10 +1,8 @@
-import React, { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useCategories } from "@/context/CategoryContext";
-import { productApi } from "@/utils/api";
-import { PageHeader, Btn, Card } from "@/components/ui";
-import { PrintButton } from "@/components/PrintButton";
-import { exportProductsToExcel } from "@/utils/excelExport";
+import { productApi, locationApi, categoryApi, adjustmentsApi } from "@/utils/api";
+import { PageHeader, Btn, Card, Th, Td } from "@/components/ui";
 
 interface Product {
   id: string;
@@ -16,700 +14,770 @@ interface Product {
   costPerCtn: number;
   sellPerCtn: number;
   minStockCtn: number;
-  status: "ACTIVE" | "INACTIVE";
-  createdAt: string;
+  status: string;
+  inventory_by_location?: { location_id: string; location_name: string; quantity_ctns: number }[];
 }
 
-interface ProductFormData {
+interface Location {
+  id: string;
   name: string;
-  sku: string;
-  category: string;
-  unit: string;
-  qtyPerCtn: string;
-  costPerCtn: string;
-  sellPerCtn: string;
-  minStockCtn: string;
+  type: string;
 }
 
 const UNITS = ["can", "bottle", "carton", "pack", "box", "bag", "tin", "unit"];
 
-const ProductManagement: React.FC = () => {
-  const { user, getAccessibleLocations } = useAuth();
-  const { categories, addCategory, updateCategory, deleteCategory } = useCategories();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [showCategoryManager, setShowCategoryManager] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [formError, setFormError] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("");
-  const [newCategoryName, setNewCategoryName] = useState("");
-  const [categoryError, setCategoryError] = useState("");
-  const [formData, setFormData] = useState<ProductFormData>({
-    name: "",
-    sku: "",
-    category: categories.length > 0 ? categories[0].name : "Other",
-    unit: "can",
-    qtyPerCtn: "24",
-    costPerCtn: "0",
-    sellPerCtn: "0",
-    minStockCtn: "5",
+const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400";
+const readonlyCls = "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-500 cursor-not-allowed";
+
+export default function ProductManagement() {
+  const { user } = useAuth();
+  const { categories, refreshCategories } = useCategories();
+
+  const [products, setProducts]   = useState<Product[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [loadErr, setLoadErr]     = useState<string | null>(null);
+
+  const [panel, setPanel] = useState<"new_product" | "add_stock" | "categories" | "edit_product" | null>(null);
+
+  // ── New product form ──────────────────────────────────────────────────────
+  const [np, setNp] = useState({
+    name: "", sku: "", category: "", unit: "can",
+    qtyPerCtn: "24", costPerCtn: "", sellPerCtn: "", minStockCtn: "5",
+    locationId: "", qtyCtn: "",
   });
+  const [npErr, setNpErr]   = useState("");
+  const [npOk, setNpOk]     = useState("");
+  const [npBusy, setNpBusy] = useState(false);
 
-  // Only ADMIN and INVENTORY_MANAGER can manage products
-  const canManageProducts = user?.role === "ADMIN" || user?.role === "INVENTORY_MANAGER";
+  // ── Add stock form ────────────────────────────────────────────────────────
+  const [as, setAs] = useState({ productId: "", locationId: "", qtyCtn: "", costPerCtn: "" });
+  const [asErr, setAsErr]   = useState("");
+  const [asOk, setAsOk]     = useState("");
+  const [asBusy, setAsBusy] = useState(false);
 
-  useEffect(() => {
-    fetchProducts();
-  }, []);
+  // ── Edit product form ─────────────────────────────────────────────────────
+  const [editId, setEditId] = useState<string | null>(null);
+  const [ep, setEp]         = useState({
+    name: "", sku: "", category: "", unit: "can",
+    qtyPerCtn: "24", costPerCtn: "", sellPerCtn: "", minStockCtn: "5",
+    // editable stock fields per location
+    stockLocationId: "",  // which location to adjust stock for
+    newStockQty: "",      // the new target total for that location
+  });
+  const [epErr, setEpErr]   = useState("");
+  const [epOk, setEpOk]     = useState("");
+  const [epBusy, setEpBusy] = useState(false);
 
-  const fetchProducts = async () => {
+  // ── Category manager ──────────────────────────────────────────────────────
+  const [newCatName, setNewCatName] = useState("");
+  const [catBusy, setCatBusy]       = useState(false);
+  const [catErr, setCatErr]         = useState("");
+  const [catOk, setCatOk]           = useState("");
+
+  // ── Table filters ─────────────────────────────────────────────────────────
+  const [search, setSearch]       = useState("");
+  const [catFilter, setCatFilter] = useState("");
+
+  // ── Delete ────────────────────────────────────────────────────────────────
+  const [delConfirm, setDelConfirm] = useState<string | null>(null);
+  const [delBusy, setDelBusy]       = useState(false);
+
+  const warehouses = locations.filter(l => l.type === "WAREHOUSE");
+  const canManage  = user?.role === "ADMIN" || user?.role === "INVENTORY_MANAGER";
+
+  // ── Load ──────────────────────────────────────────────────────────────────
+  const loadAll = async () => {
     try {
-      setIsLoading(true);
-      setFormError("");
-      console.log("📦 Fetching products from API...");
-      const data = await productApi.getProducts();
-      
-      // Transform backend response to match Product interface
-      const transformedProducts: Product[] = (data || []).map((p: any) => ({
-        id: p.id,
-        name: p.name,
-        sku: p.sku,
-        category: p.category,
-        unit: p.unit,
-        qtyPerCtn: p.qty_per_ctn,
-        costPerCtn: p.cost_per_ctn,
-        sellPerCtn: p.sell_per_ctn,
-        minStockCtn: p.min_stock_ctn,
-        status: p.status || "ACTIVE",
-        createdAt: p.created_at || new Date().toISOString(),
-      }));
-      
-      console.log("✅ Products fetched successfully:", transformedProducts);
-      setProducts(transformedProducts);
-    } catch (err) {
-      console.error("❌ Failed to fetch products:", err);
-      setFormError(err instanceof Error ? err.message : "Failed to fetch products");
-      setProducts([]);
+      setLoading(true);
+      setLoadErr(null);
+      const [prodResp, locResp] = await Promise.all([
+        productApi.getProducts(),
+        locationApi.getLocations(),
+      ]);
+      let prods: Product[] = [];
+      if (Array.isArray(prodResp)) prods = prodResp;
+      else if (prodResp && Array.isArray((prodResp as any).data)) prods = (prodResp as any).data;
+      setProducts(prods);
+      setLocations(Array.isArray(locResp) ? locResp : []);
+    } catch (e: any) {
+      setLoadErr(e?.message || "Failed to load data");
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+  useEffect(() => { loadAll(); }, []);
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  const totalStock = (p: Product) =>
+    (p.inventory_by_location || []).reduce((s, i) => s + (i.quantity_ctns || 0), 0);
+
+  const stockAt = (p: Product, locationId: string) =>
+    (p.inventory_by_location || []).find(i => i.location_id === locationId)?.quantity_ctns ?? 0;
+
+  const margin = (p: Product) =>
+    p.sellPerCtn > 0
+      ? (((p.sellPerCtn - p.costPerCtn) / p.sellPerCtn) * 100).toFixed(0) + "%"
+      : "—";
+
+  const closePanel = () => {
+    setPanel(null);
+    setNpErr(""); setNpOk("");
+    setAsErr(""); setAsOk("");
+    setEpErr(""); setEpOk("");
+    setCatErr(""); setCatOk("");
+    setEditId(null);
   };
 
-  const handleSubmit = async (e: FormEvent) => {
+  const filtered = products.filter(p =>
+    (p.name.toLowerCase().includes(search.toLowerCase()) ||
+     p.sku.toLowerCase().includes(search.toLowerCase())) &&
+    (!catFilter || p.category === catFilter)
+  );
+
+  // ── Create product ────────────────────────────────────────────────────────
+  const handleCreateProduct = async (e: FormEvent) => {
     e.preventDefault();
-    setFormError("");
+    setNpErr(""); setNpOk("");
 
-    // Validate
-    if (
-      !formData.name ||
-      !formData.sku ||
-      !formData.category ||
-      !formData.unit ||
-      !formData.qtyPerCtn ||
-      !formData.costPerCtn ||
-      !formData.sellPerCtn ||
-      formData.minStockCtn === ""
-    ) {
-      setFormError("All fields are required");
-      return;
+    if (!np.name || !np.sku || !np.category || !np.unit ||
+        !np.qtyPerCtn || np.costPerCtn === "" || np.sellPerCtn === "" ||
+        !np.locationId || !np.qtyCtn) {
+      setNpErr("All fields are required"); return;
+    }
+    if (Number(np.qtyCtn) <= 0) { setNpErr("Initial stock quantity must be > 0"); return; }
+    if (products.find(p => p.sku.toLowerCase() === np.sku.toLowerCase())) {
+      setNpErr(`SKU "${np.sku}" already exists — use Add Stock instead`); return;
     }
 
+    setNpBusy(true);
     try {
-      const apiData = {
-        name: formData.name,
-        sku: formData.sku,
-        category: formData.category,
-        unit: formData.unit,
-        qty_per_ctn: parseInt(formData.qtyPerCtn),
-        cost_per_ctn: parseFloat(formData.costPerCtn),
-        sell_per_ctn: parseFloat(formData.sellPerCtn),
-        min_stock_ctn: parseInt(formData.minStockCtn),
-      };
-
-      if (editingProduct) {
-        // Update product
-        console.log("📝 Updating product:", editingProduct.id);
-        const updated = await productApi.updateProduct(editingProduct.id, apiData);
-        
-        // Transform response
-        const transformedProduct: Product = {
-          id: updated.id,
-          name: updated.name,
-          sku: updated.sku,
-          category: updated.category,
-          unit: updated.unit,
-          qtyPerCtn: updated.qty_per_ctn,
-          costPerCtn: updated.cost_per_ctn,
-          sellPerCtn: updated.sell_per_ctn,
-          minStockCtn: updated.min_stock_ctn,
-          status: updated.status || "ACTIVE",
-          createdAt: updated.created_at || new Date().toISOString(),
-        };
-
-        setProducts(
-          products.map((p) => (p.id === editingProduct.id ? transformedProduct : p))
-        );
-        console.log("✅ Product updated successfully");
-      } else {
-        // Create product
-        console.log("➕ Creating new product");
-        const created = await productApi.createProduct(apiData);
-        
-        // Transform response
-        const transformedProduct: Product = {
-          id: created.id,
-          name: created.name,
-          sku: created.sku,
-          category: created.category,
-          unit: created.unit,
-          qtyPerCtn: created.qty_per_ctn,
-          costPerCtn: created.cost_per_ctn,
-          sellPerCtn: created.sell_per_ctn,
-          minStockCtn: created.min_stock_ctn,
-          status: created.status || "ACTIVE",
-          createdAt: created.created_at || new Date().toISOString(),
-        };
-
-        setProducts([...products, transformedProduct]);
-        console.log("✅ Product created successfully");
-      }
-
-      setFormData({
-        name: "",
-        sku: "",
-        category: "Beverages",
-        unit: "can",
-        qtyPerCtn: "24",
-        costPerCtn: "0",
-        sellPerCtn: "0",
-        minStockCtn: "5",
+      const created = await productApi.createProduct({
+        name: np.name, sku: np.sku.toUpperCase(), category: np.category, unit: np.unit,
+        qtyPerCtn: Number(np.qtyPerCtn), costPerCtn: Number(np.costPerCtn),
+        sellPerCtn: Number(np.sellPerCtn), minStockCtn: Number(np.minStockCtn || 5),
       });
-      setEditingProduct(null);
-      setShowForm(false);
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : "Operation failed";
-      console.error("❌ Error:", errorMsg);
-      setFormError(errorMsg);
+      const product = (created as any)?.id ? created : (created as any)?.data ?? created;
+      await productApi.receiveStock({
+        productId: (product as any).id, warehouseId: np.locationId,
+        qtyCtn: Number(np.qtyCtn), costPerCtn: Number(np.costPerCtn),
+        supplier: "Initial Stock", notes: "Initial stock for new product",
+      });
+      setNpOk(`✅ "${np.name}" created with ${np.qtyCtn} CTN`);
+      setNp({ name:"", sku:"", category: categories[0]?.name||"", unit:"can",
+              qtyPerCtn:"24", costPerCtn:"", sellPerCtn:"", minStockCtn:"5",
+              locationId: warehouses[0]?.id||"", qtyCtn:"" });
+      await loadAll();
+      setTimeout(() => { setPanel(null); setNpOk(""); }, 1500);
+    } catch (e: any) {
+      setNpErr(e?.message || "Failed to create product");
+    } finally {
+      setNpBusy(false);
     }
   };
 
-  const handleEdit = (product: Product) => {
-    setEditingProduct(product);
-    setFormData({
-      name: product.name,
-      sku: product.sku,
-      category: product.category,
-      unit: product.unit,
-      qtyPerCtn: product.qtyPerCtn.toString(),
-      costPerCtn: product.costPerCtn.toString(),
-      sellPerCtn: product.sellPerCtn.toString(),
-      minStockCtn: product.minStockCtn.toString(),
-    });
-    setShowForm(true);
-  };
-
-  const handleCancel = () => {
-    setShowForm(false);
-    setEditingProduct(null);
-    setFormData({
-      name: "",
-      sku: "",
-      category: categories.length > 0 ? categories[0].name : "Other",
-      unit: "can",
-      qtyPerCtn: "24",
-      costPerCtn: "0",
-      sellPerCtn: "0",
-      minStockCtn: "5",
-    });
-    setFormError("");
-  };
-
-  const handleAddCategory = () => {
-    if (!newCategoryName.trim()) {
-      setCategoryError("Category name cannot be empty");
-      return;
+  // ── Add stock ─────────────────────────────────────────────────────────────
+  const handleAddStock = async (e: FormEvent) => {
+    e.preventDefault();
+    setAsErr(""); setAsOk("");
+    if (!as.productId || !as.locationId || !as.qtyCtn) {
+      setAsErr("Product, location and quantity are required"); return;
     }
+    if (Number(as.qtyCtn) <= 0) { setAsErr("Quantity must be > 0"); return; }
+
+    setAsBusy(true);
     try {
-      addCategory(newCategoryName.trim());
-      setNewCategoryName("");
-      setCategoryError("");
-    } catch (err) {
-      setCategoryError(err instanceof Error ? err.message : "Failed to add category");
+      const prod = products.find(p => p.id === as.productId)!;
+      await productApi.receiveStock({
+        productId: as.productId, warehouseId: as.locationId,
+        qtyCtn: Number(as.qtyCtn),
+        costPerCtn: Number(as.costPerCtn) || prod.costPerCtn,
+        supplier: "Stock replenishment", notes: "Additional stock received",
+      });
+      setAsOk(`✅ ${as.qtyCtn} CTN added to "${prod.name}"`);
+      setAs({ productId:"", locationId:"", qtyCtn:"", costPerCtn:"" });
+      await loadAll();
+      setTimeout(() => { setPanel(null); setAsOk(""); }, 1500);
+    } catch (e: any) {
+      setAsErr(e?.message || "Failed to add stock");
+    } finally {
+      setAsBusy(false);
     }
   };
 
-  const handleDeleteCategory = (categoryName: string) => {
-    if (window.confirm(`Delete category "${categoryName}"? Products in this category will need to be reassigned.`)) {
-      try {
-        const categoryToDelete = categories.find(c => c.name === categoryName);
-        if (categoryToDelete) {
-          deleteCategory(categoryToDelete.id);
+  // ── Open edit ─────────────────────────────────────────────────────────────
+  const handleEditClick = (p: Product) => {
+    const firstLocId = p.inventory_by_location?.[0]?.location_id || warehouses[0]?.id || "";
+    setEditId(p.id);
+    setEp({
+      name: p.name, sku: p.sku, category: p.category, unit: p.unit,
+      qtyPerCtn: String(p.qtyPerCtn), costPerCtn: String(p.costPerCtn),
+      sellPerCtn: String(p.sellPerCtn), minStockCtn: String(p.minStockCtn),
+      stockLocationId: firstLocId,
+      newStockQty: String(stockAt(p, firstLocId)),
+    });
+    setEpErr(""); setEpOk("");
+    setPanel("edit_product");
+  };
+
+  // ── Update product ────────────────────────────────────────────────────────
+  const handleUpdateProduct = async (e: FormEvent) => {
+    e.preventDefault();
+    setEpErr(""); setEpOk("");
+
+    if (!ep.name || !ep.sku || !ep.category || !ep.unit ||
+        !ep.qtyPerCtn || ep.costPerCtn === "" || ep.sellPerCtn === "") {
+      setEpErr("All fields are required"); return;
+    }
+
+    setEpBusy(true);
+    try {
+      // 1. Update product details
+      await productApi.updateProduct(editId!, {
+        name: ep.name, sku: ep.sku.toUpperCase(), category: ep.category, unit: ep.unit,
+        qtyPerCtn: Number(ep.qtyPerCtn), costPerCtn: Number(ep.costPerCtn),
+        sellPerCtn: Number(ep.sellPerCtn), minStockCtn: Number(ep.minStockCtn || 0),
+      });
+
+      // 2. If stock field was edited, create an adjustment to reach the new target
+      if (ep.stockLocationId && ep.newStockQty !== "") {
+        const editProd = products.find(p => p.id === editId);
+        const currentQty = editProd ? stockAt(editProd, ep.stockLocationId) : 0;
+        const targetQty  = Number(ep.newStockQty);
+        const diff       = targetQty - currentQty;
+
+        if (diff !== 0) {
+          if (diff > 0) {
+            // Add stock via receiving
+            await productApi.receiveStock({
+              productId: editId!, warehouseId: ep.stockLocationId,
+              qtyCtn: diff, costPerCtn: Number(ep.costPerCtn),
+              supplier: "Stock correction", notes: "Manual stock adjustment via product edit",
+            });
+          } else {
+            // Remove stock via adjustment
+            await adjustmentsApi.createAdjustment({
+              productId: editId!, locationId: ep.stockLocationId,
+              qtyCtn: diff, // negative
+              reason: "CORRECTION",
+              notes: "Manual stock adjustment via product edit",
+            });
+          }
         }
-      } catch (err) {
-        setCategoryError(err instanceof Error ? err.message : "Failed to delete category");
       }
+
+      setEpOk(`✅ "${ep.name}" updated`);
+      await loadAll();
+      setTimeout(() => { closePanel(); }, 1200);
+    } catch (e: any) {
+      setEpErr(e?.message || "Failed to update product");
+    } finally {
+      setEpBusy(false);
     }
   };
 
-  const handleDeactivate = async (id: string) => {
-    if (window.confirm("Are you sure you want to deactivate this product?")) {
-      try {
-        const product = products.find(p => p.id === id);
-        if (!product) return;
-        
-        console.log("🔴 Deactivating product:", id);
-        await productApi.updateProduct(id, { 
-          name: product.name,
-          sku: product.sku,
-          category: product.category,
-          unit: product.unit,
-          qty_per_ctn: product.qtyPerCtn,
-          cost_per_ctn: product.costPerCtn,
-          sell_per_ctn: product.sellPerCtn,
-          min_stock_ctn: product.minStockCtn,
-          status: "INACTIVE"
-        });
-        
-        setProducts(
-          products.map((p) => (p.id === id ? { ...p, status: "INACTIVE" } : p))
-        );
-        console.log("✅ Product deactivated");
-      } catch (err) {
-        console.error("❌ Error deactivating product:", err);
-        setFormError(err instanceof Error ? err.message : "Failed to deactivate product");
-      }
+  // ── Add category ──────────────────────────────────────────────────────────
+  const handleAddCategory = async () => {
+    if (!newCatName.trim()) { setCatErr("Name cannot be empty"); return; }
+    setCatBusy(true); setCatErr(""); setCatOk("");
+    try {
+      await categoryApi.createCategory(newCatName.trim());
+      await refreshCategories();
+      setCatOk(`✅ "${newCatName.trim()}" added`);
+      setNewCatName("");
+    } catch (e: any) {
+      setCatErr(e?.message || "Failed to add category");
+    } finally {
+      setCatBusy(false);
     }
   };
 
-  const filteredProducts = products.filter((p) => {
-    const matchesSearch =
-      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.sku.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = !selectedCategory || p.category === selectedCategory;
-    const matchesStatus = p.status === "ACTIVE";
-    return matchesSearch && matchesCategory && matchesStatus;
-  });
-
-  const handleExportProducts = () => {
-    // Transform products data for export
-    const exportData = filteredProducts.map((product) => ({
-      name: product.name,
-      sku: product.sku,
-      category: product.category,
-      unit: product.unit,
-      qtyPerCtn: product.qtyPerCtn,
-      costPerCtn: product.costPerCtn.toFixed(2),
-      sellPerCtn: product.sellPerCtn.toFixed(2),
-      minStockCtn: product.minStockCtn,
-      status: product.status,
-      createdAt: new Date(product.createdAt).toLocaleDateString(),
-    }));
-
-    exportProductsToExcel(exportData);
+  // ── Delete product ────────────────────────────────────────────────────────
+  const handleDelete = async (id: string) => {
+    setDelBusy(true);
+    try {
+      await productApi.deleteProduct(id);
+      setDelConfirm(null);
+      await loadAll();
+    } catch (e: any) {
+      alert(e?.message || "Failed to delete product");
+    } finally {
+      setDelBusy(false);
+    }
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-gray-600">Loading products...</div>
-      </div>
-    );
-  }
+  // ── Guards ────────────────────────────────────────────────────────────────
+  if (!canManage) return (
+    <div className="p-6">
+      <Card className="p-8 text-center">
+        <p className="text-red-600 font-bold text-lg">Access Denied</p>
+        <p className="text-gray-500 mt-1">Only Admins and Inventory Managers can access this page</p>
+      </Card>
+    </div>
+  );
 
-  if (!canManageProducts) {
-    return (
-      <div className="p-6">
-        <Card className="p-8 text-center">
-          <div style={{ color: "#dc2626", fontSize: "18px", fontWeight: "bold", marginBottom: "8px" }}>Access Denied</div>
-          <div style={{ color: "#64748b" }}>Only administrators and inventory managers can manage products.</div>
-        </Card>
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="p-6">
+      <PageHeader title="Product Management" subtitle="Loading…" />
+      <Card className="p-8 text-center text-gray-500">Loading products…</Card>
+    </div>
+  );
 
-  const margin = (product: Product) => {
-    const cost = product.costPerCtn;
-    const sell = product.sellPerCtn;
-    if (sell === 0) return 0;
-    return Math.round(((sell - cost) / sell) * 100);
-  };
-
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-5 p-6">
+
+      {/* Header */}
       <PageHeader
         title="Product Management"
         subtitle="Create and manage your product catalog"
-        action={
-          !showForm && !showCategoryManager && canManageProducts && (
-            <div className="flex gap-2">
-              <PrintButton 
-                label="Download Products"
-                onExport={handleExportProducts}
-              />
-              <Btn onClick={() => setShowCategoryManager(true)} variant="secondary">
-                Manage Categories
-              </Btn>
-              <Btn onClick={() => setShowForm(true)} variant="primary">
-                + New Product
-              </Btn>
-            </div>
-          )
-        }
+        action={panel === null ? (
+          <div className="flex gap-2 flex-wrap">
+            <Btn variant="secondary" onClick={loadAll}>🔄 Refresh</Btn>
+            <Btn variant="secondary" onClick={() => setPanel("categories")}>Manage Categories</Btn>
+            <Btn variant="secondary" onClick={() => { setPanel("add_stock"); setAs({ productId:"", locationId: warehouses[0]?.id||"", qtyCtn:"", costPerCtn:"" }); }}>
+              📦 Add Stock
+            </Btn>
+            <Btn variant="primary" onClick={() => { setPanel("new_product"); setNp(prev => ({ ...prev, category: categories[0]?.name||"", locationId: warehouses[0]?.id||"" })); }}>
+              + New Product
+            </Btn>
+          </div>
+        ) : undefined}
       />
 
-      {formError && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-          {formError}
-        </div>
-      )}
+      {loadErr && <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">{loadErr}</div>}
 
-      {/* Category Manager */}
-      {showCategoryManager && (
-        <Card className="p-6 border-2 border-amber-300 bg-amber-50">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold text-gray-800">Manage Categories</h3>
-            <button
-              onClick={() => setShowCategoryManager(false)}
-              className="text-gray-500 hover:text-gray-700"
-            >
-              ✕
-            </button>
+      {/* ── NEW PRODUCT ──────────────────────────────────────────────────────── */}
+      {panel === "new_product" && (
+        <Card className="p-6">
+          <div className="flex justify-between items-center mb-5">
+            <h3 className="text-lg font-bold" style={{ color: "#1e3a8a" }}>Create New Product</h3>
+            <button onClick={closePanel} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
           </div>
+          {npErr && <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">{npErr}</div>}
+          {npOk  && <div className="mb-4 p-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm">{npOk}</div>}
 
-          {categoryError && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 mb-4">
-              {categoryError}
-            </div>
-          )}
-
-          <div className="space-y-4">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={newCategoryName}
-                onChange={(e) => setNewCategoryName(e.target.value)}
-                placeholder="Enter new category name"
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                onKeyPress={(e) => {
-                  if (e.key === "Enter") {
-                    handleAddCategory();
-                  }
-                }}
-              />
-              <Btn onClick={handleAddCategory} variant="primary">
-                Add Category
-              </Btn>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {categories.map((cat) => (
-                <div
-                  key={cat.id}
-                  className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg"
-                >
-                  <span className="text-sm font-medium text-gray-800">{cat.name}</span>
-                  {categories.length > 1 && (
-                    <button
-                      onClick={() => handleDeleteCategory(cat.name)}
-                      className="text-red-600 hover:text-red-800 text-sm font-medium"
-                    >
-                      Delete
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            <div className="pt-4 border-t border-gray-200">
-              <Btn
-                onClick={() => setShowCategoryManager(false)}
-                variant="secondary"
-              >
-                Done
-              </Btn>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {formError && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-          {formError}
-        </div>
-      )}
-
-      {/* Product Form - Always show when showForm is true */}
-      {showForm && (
-        <Card className="p-6 border-2 border-blue-300 bg-blue-50">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">
-            {editingProduct ? "Edit Product" : "Add New Product"}
-          </h3>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleCreateProduct}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Product Name *
-                </label>
-                <input
-                  type="text"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleFormChange}
-                  placeholder="e.g., Coca Cola 330ml"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                  autoFocus
-                />
+                <label className="block text-sm font-semibold mb-1">Product Name *</label>
+                <input value={np.name} onChange={e => setNp({...np, name: e.target.value})}
+                  className={inputCls} placeholder="e.g. Coca Cola 330ml" required />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">SKU *</label>
-                <input
-                  type="text"
-                  name="sku"
-                  value={formData.sku}
-                  onChange={handleFormChange}
-                  placeholder="e.g., CC330"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                  disabled={!!editingProduct}
-                />
+                <label className="block text-sm font-semibold mb-1">SKU *</label>
+                <input value={np.sku} onChange={e => setNp({...np, sku: e.target.value.toUpperCase()})}
+                  className={`${inputCls} font-mono`} placeholder="e.g. CC330" required />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
-                <select
-                  name="category"
-                  value={formData.category}
-                  onChange={handleFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {categories.map((cat) => (
-                    <option key={cat.id} value={cat.name}>
-                      {cat.name}
-                    </option>
-                  ))}
+                <label className="block text-sm font-semibold mb-1">Category *</label>
+                <select value={np.category} onChange={e => setNp({...np, category: e.target.value})} className={inputCls} required>
+                  <option value="">— select —</option>
+                  {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                </select>
+                {categories.length === 0 && (
+                  <p className="text-xs text-orange-600 mt-1">No categories yet — <button type="button" className="underline" onClick={() => setPanel("categories")}>add one first</button></p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1">Unit *</label>
+                <select value={np.unit} onChange={e => setNp({...np, unit: e.target.value})} className={inputCls} required>
+                  {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Unit</label>
-                <select
-                  name="unit"
-                  value={formData.unit}
-                  onChange={handleFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {UNITS.map((unit) => (
-                    <option key={unit} value={unit}>
-                      {unit}
-                    </option>
-                  ))}
+                <label className="block text-sm font-semibold mb-1">Qty per Carton *</label>
+                <input type="number" min="1" value={np.qtyPerCtn} onChange={e => setNp({...np, qtyPerCtn: e.target.value})}
+                  className={inputCls} required />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1">Min Stock (CTN)</label>
+                <input type="number" min="0" value={np.minStockCtn} onChange={e => setNp({...np, minStockCtn: e.target.value})}
+                  className={inputCls} />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1">Cost per Carton ($) *</label>
+                <input type="number" min="0" step="0.01" value={np.costPerCtn} onChange={e => setNp({...np, costPerCtn: e.target.value})}
+                  className={inputCls} placeholder="0.00" required />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1">Sell Price per Carton ($) *</label>
+                <input type="number" min="0" step="0.01" value={np.sellPerCtn} onChange={e => setNp({...np, sellPerCtn: e.target.value})}
+                  className={inputCls} placeholder="0.00" required />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1">Initial Stock Location *</label>
+                <select value={np.locationId} onChange={e => setNp({...np, locationId: e.target.value})} className={inputCls} required>
+                  <option value="">— select warehouse —</option>
+                  {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
                 </select>
+                {warehouses.length === 0 && <p className="text-xs text-orange-600 mt-1">No warehouses yet</p>}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Qty per Carton *
-                </label>
-                <input
-                  type="number"
-                  name="qtyPerCtn"
-                  value={formData.qtyPerCtn}
-                  onChange={handleFormChange}
-                  placeholder="24"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                  min="1"
-                />
+                <label className="block text-sm font-semibold mb-1">Total Stock (CTN) *</label>
+                <input type="number" min="1" value={np.qtyCtn} onChange={e => setNp({...np, qtyCtn: e.target.value})}
+                  className={inputCls} placeholder="e.g. 100" required />
+                <p className="text-xs text-gray-400 mt-1">How many cartons you have right now</p>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Cost per Carton ($) *
-                </label>
-                <input
-                  type="number"
-                  name="costPerCtn"
-                  value={formData.costPerCtn}
-                  onChange={handleFormChange}
-                  placeholder="0.00"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                  min="0"
-                  step="0.01"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Selling Price per Carton ($) *
-                </label>
-                <input
-                  type="number"
-                  name="sellPerCtn"
-                  value={formData.sellPerCtn}
-                  onChange={handleFormChange}
-                  placeholder="0.00"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                  min="0"
-                  step="0.01"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Min Stock (CTN) *
-                </label>
-                <input
-                  type="number"
-                  name="minStockCtn"
-                  value={formData.minStockCtn}
-                  onChange={handleFormChange}
-                  placeholder="5"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                  min="0"
-                />
-              </div>
             </div>
-
-            <div className="flex gap-3 pt-6 border-t border-gray-300">
-              <Btn type="submit" variant="primary">
-                {editingProduct ? "Update Product" : "Add Product"}
-              </Btn>
-              <Btn type="button" variant="secondary" onClick={handleCancel}>
-                Cancel
-              </Btn>
+            <div className="flex gap-3 mt-5 pt-4 border-t border-gray-100">
+              <Btn type="submit" variant="primary" disabled={npBusy}>{npBusy ? "Creating…" : "✅ Create Product"}</Btn>
+              <Btn type="button" variant="secondary" onClick={closePanel}>Cancel</Btn>
             </div>
           </form>
         </Card>
       )}
 
-      {/* Search and Filter */}
-      {!showForm && canManageProducts && (
-        <>
-          <Card className="p-4">
-            <div className="flex gap-4">
-              <div className="flex-1">
-                <input
-                  type="text"
-                  placeholder="Search by name or SKU..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">All Categories</option>
-                  {categories.map((cat) => (
-                    <option key={cat.id} value={cat.name}>
-                      {cat.name}
-                    </option>
-                  ))}
+      {/* ── ADD STOCK ────────────────────────────────────────────────────────── */}
+      {panel === "add_stock" && (
+        <Card className="p-6">
+          <div className="flex justify-between items-center mb-5">
+            <h3 className="text-lg font-bold" style={{ color: "#1e3a8a" }}>Add Stock to Existing Product</h3>
+            <button onClick={closePanel} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+          </div>
+          {asErr && <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">{asErr}</div>}
+          {asOk  && <div className="mb-4 p-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm">{asOk}</div>}
+
+          <form onSubmit={handleAddStock}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-semibold mb-1">Product *</label>
+                <select value={as.productId} onChange={e => setAs({...as, productId: e.target.value})} className={inputCls} required>
+                  <option value="">— choose product —</option>
+                  {products.map(p => <option key={p.id} value={p.id}>{p.name} ({p.sku})</option>)}
                 </select>
               </div>
-            </div>
-          </Card>
 
-          {/* Products Table */}
-          <Card>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50">
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">
-                      Product
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">SKU</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">
-                      Category
-                    </th>
-                    <th className="px-6 py-3 text-center text-sm font-semibold text-gray-700">
-                      Cost
-                    </th>
-                    <th className="px-6 py-3 text-center text-sm font-semibold text-gray-700">
-                      Sell
-                    </th>
-                    <th className="px-6 py-3 text-center text-sm font-semibold text-gray-700">
-                      Margin
-                    </th>
-                    <th className="px-6 py-3 text-center text-sm font-semibold text-gray-700">
-                      Min Stock
-                    </th>
-                    <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredProducts.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
-                        No products found
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredProducts.map((product) => (
-                      <tr key={product.id} className="border-b border-gray-200 hover:bg-gray-50">
-                        <td className="px-6 py-3 text-sm font-medium text-gray-900">
-                          <div>
-                            <p>{product.name}</p>
-                            <p className="text-xs text-gray-500">{product.unit}</p>
-                          </div>
-                        </td>
-                        <td className="px-6 py-3 text-sm text-gray-600">{product.sku}</td>
-                        <td className="px-6 py-3 text-sm text-gray-600">{product.category}</td>
-                        <td className="px-6 py-3 text-sm text-center text-gray-600">
-                          ${product.costPerCtn}
-                        </td>
-                        <td className="px-6 py-3 text-sm text-center text-gray-600">
-                          ${product.sellPerCtn}
-                        </td>
-                        <td className="px-6 py-3 text-sm text-center font-semibold text-green-600">
-                          {margin(product)}%
-                        </td>
-                        <td className="px-6 py-3 text-sm text-center text-gray-600">
-                          {product.minStockCtn} CTN
-                        </td>
-                        <td className="px-6 py-3 text-right space-x-2">
-                          <button
-                            onClick={() => handleEdit(product)}
-                            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDeactivate(product.id)}
-                            className="text-red-600 hover:text-red-800 text-sm font-medium"
-                          >
-                            Deactivate
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+              {/* Current stock — read-only display field */}
+              <div>
+                <label className="block text-sm font-semibold mb-1">Current Stock (CTN)</label>
+                <input
+                  type="number"
+                  readOnly
+                  value={as.productId ? totalStock(products.find(p => p.id === as.productId)!) : ""}
+                  className={readonlyCls}
+                  placeholder="—"
+                />
+                <p className="text-xs text-gray-400 mt-1">Stock currently in all locations</p>
+              </div>
+
+              {/* New cartons to ADD */}
+              <div>
+                <label className="block text-sm font-semibold mb-1">Cartons to Add (CTN) *</label>
+                <input type="number" min="1" value={as.qtyCtn} onChange={e => setAs({...as, qtyCtn: e.target.value})}
+                  className={inputCls} placeholder="e.g. 50" required />
+                {as.productId && as.qtyCtn && Number(as.qtyCtn) > 0 && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    New total: {totalStock(products.find(p => p.id === as.productId)!) + Number(as.qtyCtn)} CTN
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1">Warehouse *</label>
+                <select value={as.locationId} onChange={e => setAs({...as, locationId: e.target.value})} className={inputCls} required>
+                  <option value="">— select warehouse —</option>
+                  {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1">Cost per Carton ($)</label>
+                <input type="number" min="0" step="0.01" value={as.costPerCtn} onChange={e => setAs({...as, costPerCtn: e.target.value})}
+                  className={inputCls} placeholder="Leave blank to use product default" />
+              </div>
+
             </div>
+            <div className="flex gap-3 mt-5 pt-4 border-t border-gray-100">
+              <Btn type="submit" variant="primary" disabled={asBusy}>{asBusy ? "Adding…" : "📦 Add Stock"}</Btn>
+              <Btn type="button" variant="secondary" onClick={closePanel}>Cancel</Btn>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      {/* ── CATEGORIES ───────────────────────────────────────────────────────── */}
+      {panel === "categories" && (
+        <Card className="p-6">
+          <div className="flex justify-between items-center mb-5">
+            <h3 className="text-lg font-bold" style={{ color: "#1e3a8a" }}>Manage Categories</h3>
+            <button onClick={closePanel} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+          </div>
+          {catErr && <div className="mb-3 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">{catErr}</div>}
+          {catOk  && <div className="mb-3 p-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm">{catOk}</div>}
+          <div className="flex gap-2 mb-5">
+            <input value={newCatName} onChange={e => setNewCatName(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && (e.preventDefault(), handleAddCategory())}
+              className={inputCls} placeholder="New category name…" />
+            <Btn variant="primary" onClick={handleAddCategory} disabled={catBusy}>{catBusy ? "Adding…" : "Add"}</Btn>
+          </div>
+          {categories.length === 0 ? (
+            <p className="text-gray-400 text-sm text-center py-4">No categories yet</p>
+          ) : (
+            <div className="space-y-2">
+              {categories.map(c => (
+                <div key={c.id} className="flex items-center justify-between px-4 py-2 rounded-lg bg-gray-50 border border-gray-100">
+                  <span className="font-medium text-sm">{c.name}</span>
+                  <span className="text-xs text-gray-400 font-mono">{c.id.slice(0, 8)}…</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="mt-5 pt-4 border-t border-gray-100">
+            <Btn variant="secondary" onClick={closePanel}>Close</Btn>
+          </div>
+        </Card>
+      )}
+
+      {/* ── EDIT PRODUCT ─────────────────────────────────────────────────────── */}
+      {panel === "edit_product" && (() => {
+        const editProd   = products.find(p => p.id === editId);
+        const currentQty = editProd && ep.stockLocationId ? stockAt(editProd, ep.stockLocationId) : 0;
+        const diff       = ep.newStockQty !== "" ? Number(ep.newStockQty) - currentQty : 0;
+        return (
+          <Card className="p-6">
+            <div className="flex justify-between items-center mb-5">
+              <h3 className="text-lg font-bold" style={{ color: "#1e3a8a" }}>Edit Product</h3>
+              <button onClick={closePanel} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+            </div>
+            {epErr && <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">{epErr}</div>}
+            {epOk  && <div className="mb-4 p-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm">{epOk}</div>}
+
+            <form onSubmit={handleUpdateProduct}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Product Name *</label>
+                  <input value={ep.name} onChange={e => setEp({...ep, name: e.target.value})} className={inputCls} required />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-1">SKU *</label>
+                  <input value={ep.sku} onChange={e => setEp({...ep, sku: e.target.value.toUpperCase()})}
+                    className={`${inputCls} font-mono`} required />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Category *</label>
+                  <select value={ep.category} onChange={e => setEp({...ep, category: e.target.value})} className={inputCls} required>
+                    <option value="">— select —</option>
+                    {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Unit *</label>
+                  <select value={ep.unit} onChange={e => setEp({...ep, unit: e.target.value})} className={inputCls} required>
+                    {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Qty per Carton *</label>
+                  <input type="number" min="1" value={ep.qtyPerCtn} onChange={e => setEp({...ep, qtyPerCtn: e.target.value})} className={inputCls} required />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Min Stock (CTN)</label>
+                  <input type="number" min="0" value={ep.minStockCtn} onChange={e => setEp({...ep, minStockCtn: e.target.value})} className={inputCls} />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Cost per Carton ($) *</label>
+                  <input type="number" min="0" step="0.01" value={ep.costPerCtn} onChange={e => setEp({...ep, costPerCtn: e.target.value})} className={inputCls} required />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Sell Price per Carton ($) *</label>
+                  <input type="number" min="0" step="0.01" value={ep.sellPerCtn} onChange={e => setEp({...ep, sellPerCtn: e.target.value})} className={inputCls} required />
+                </div>
+
+                {/* ── Stock section ── */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Location for Stock Adjustment</label>
+                  <select
+                    value={ep.stockLocationId}
+                    onChange={e => {
+                      const newLocId = e.target.value;
+                      const qty = editProd ? stockAt(editProd, newLocId) : 0;
+                      setEp({...ep, stockLocationId: newLocId, newStockQty: String(qty)});
+                    }}
+                    className={inputCls}
+                  >
+                    <option value="">— select location —</option>
+                    {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Total Stock (CTN)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={ep.newStockQty}
+                    onChange={e => setEp({...ep, newStockQty: e.target.value})}
+                    className={inputCls}
+                    placeholder="Type the actual number you have"
+                  />
+                  {ep.stockLocationId && ep.newStockQty !== "" && diff !== 0 && (
+                    <p className="text-xs mt-1" style={{ color: diff > 0 ? "#16a34a" : "#dc2626" }}>
+                      {diff > 0 ? `+${diff}` : diff} CTN will be {diff > 0 ? "added" : "removed"} on save
+                    </p>
+                  )}
+                  {ep.stockLocationId && ep.newStockQty !== "" && diff === 0 && (
+                    <p className="text-xs mt-1 text-gray-400">No stock change</p>
+                  )}
+                </div>
+
+              </div>
+              <div className="flex gap-3 mt-5 pt-4 border-t border-gray-100">
+                <Btn type="submit" variant="primary" disabled={epBusy}>{epBusy ? "Saving…" : "✅ Save Changes"}</Btn>
+                <Btn type="button" variant="secondary" onClick={closePanel}>Cancel</Btn>
+              </div>
+            </form>
           </Card>
-        </>
+        );
+      })()}
+
+      {/* ── FILTERS ──────────────────────────────────────────────────────────── */}
+      {panel === null && (
+        <div className="flex flex-wrap gap-3">
+          <input type="text" placeholder="Search by name or SKU…" value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="flex-1 min-w-[200px] px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+          <select value={catFilter} onChange={e => setCatFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="">All Categories</option>
+            {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+          </select>
+        </div>
+      )}
+
+      {/* ── PRODUCTS TABLE ───────────────────────────────────────────────────── */}
+      {panel === null && (
+        <Card>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
+                  <Th>Product</Th>
+                  <Th>SKU</Th>
+                  <Th>Category</Th>
+                  <Th>Cost</Th>
+                  <Th>Sell</Th>
+                  <Th>Margin</Th>
+                  <Th>Min Stock</Th>
+                  <Th>Stock (CTN)</Th>
+                  <Th>Locations</Th>
+                  <Th>Actions</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <Td colSpan={10}>
+                      <div className="text-center py-12">
+                        <div className="text-4xl mb-3">📦</div>
+                        <p className="text-gray-500 font-medium">
+                          {products.length === 0 ? "No products yet" : "No products match your search"}
+                        </p>
+                        {products.length === 0 && (
+                          <p className="text-gray-400 text-sm mt-1">Click "+ New Product" to create your first product</p>
+                        )}
+                      </div>
+                    </Td>
+                  </tr>
+                ) : (
+                  filtered.map(p => {
+                    const tot   = totalStock(p);
+                    const isOut = tot === 0;
+                    const isLow = !isOut && tot < p.minStockCtn;
+                    const col   = isOut ? "#dc2626" : isLow ? "#ca8a04" : "#16a34a";
+                    const bg    = isOut ? "#fee2e2" : isLow ? "#fef9c3" : "#dcfce7";
+                    return (
+                      <tr key={p.id} style={{ borderBottom: "1px solid #f8fafc" }} className="hover:bg-gray-50 transition-colors">
+                        <Td>
+                          <div className="font-semibold" style={{ color: "#1e3a8a" }}>{p.name}</div>
+                          <div className="text-xs text-gray-400">{p.unit}</div>
+                        </Td>
+                        <Td mono>{p.sku}</Td>
+                        <Td>
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: "#dbeafe", color: "#1d4ed8" }}>
+                            {p.category}
+                          </span>
+                        </Td>
+                        <Td mono>${p.costPerCtn.toFixed(2)}</Td>
+                        <Td mono><span className="font-semibold" style={{ color: "#16a34a" }}>${p.sellPerCtn.toFixed(2)}</span></Td>
+                        <Td mono><span style={{ color: "#7c3aed" }}>{margin(p)}</span></Td>
+                        <Td mono>{p.minStockCtn}</Td>
+                        <Td>
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-lg font-bold font-mono" style={{ color: col }}>{tot}</span>
+                              <span className="text-xs px-1.5 py-0.5 rounded font-semibold" style={{ background: bg, color: col }}>
+                                {isOut ? "Out" : isLow ? "Low" : "OK"}
+                              </span>
+                            </div>
+                            {(p.inventory_by_location || []).map(inv => (
+                              <div key={inv.location_id} className="text-xs flex gap-1" style={{ color: "#64748b" }}>
+                                <span>{inv.location_name}:</span>
+                                <span className="font-mono font-semibold">{inv.quantity_ctns}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </Td>
+                        <Td>
+                          <span className="text-xs" style={{ color: "#64748b" }}>
+                            {(p.inventory_by_location || []).length} loc
+                          </span>
+                        </Td>
+                        <Td>
+                          {delConfirm === p.id ? (
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => handleDelete(p.id)} disabled={delBusy}
+                                className="text-xs bg-red-600 text-white px-2 py-1 rounded hover:bg-red-700 disabled:opacity-50">
+                                {delBusy ? "…" : "Confirm"}
+                              </button>
+                              <button onClick={() => setDelConfirm(null)}
+                                className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded hover:bg-gray-300">
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => handleEditClick(p)}
+                                className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50">
+                                ✏️ Edit
+                              </button>
+                              <button onClick={() => setDelConfirm(p.id)}
+                                className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded hover:bg-red-50">
+                                🗑 Delete
+                              </button>
+                            </div>
+                          )}
+                        </Td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
     </div>
   );
-};
-
-export default ProductManagement;
+}

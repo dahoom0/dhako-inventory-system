@@ -9,8 +9,8 @@ import {
 
 const router = Router();
 
-// Store Manager and Admin can receive stock
-router.post("/", authenticate, requireRole("ADMIN", "STORE_MANAGER"), receiveStock);
+// INVENTORY_MANAGER, Store Manager and Admin can receive stock
+router.post("/", authenticate, requireRole("ADMIN", "INVENTORY_MANAGER", "STORE_MANAGER"), receiveStock);
 
 // Everyone can view receiving history
 router.get("/history", authenticate, getReceivingHistory);

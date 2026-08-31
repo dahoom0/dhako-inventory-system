@@ -9,11 +9,8 @@ interface Customer {
   name: string;
   phone: string;
   email: string;
-  address: string;
-  notes: string;
   locationId: string;
   createdAt: string;
-  updatedAt: string;
 }
 
 interface PaginatedResponse {
@@ -41,8 +38,6 @@ export default function CustomerManagement() {
     name: "",
     phone: "",
     email: "",
-    address: "",
-    notes: "",
     locationId: "",
   });
 
@@ -63,10 +58,18 @@ export default function CustomerManagement() {
         locationId: locationFilter || undefined,
       });
 
-      const paginated = response as PaginatedResponse;
-      setCustomers(paginated.data);
-      setTotal(paginated.total);
-      setPageSize(paginated.pageSize);
+      // API wrapper returns the inner data object directly:
+      // { data: Customer[], total, page, pageSize, totalPages }
+      const paginated = response as any;
+      const rows: Customer[] = Array.isArray(paginated)
+        ? paginated                          // plain array (shouldn't happen)
+        : Array.isArray(paginated?.data)
+          ? paginated.data                   // paginated response ← normal case
+          : [];
+
+      setCustomers(rows);
+      setTotal(paginated?.total ?? rows.length);
+      setPageSize(paginated?.pageSize ?? 25);
     } catch (err: any) {
       setError(err.message || "Failed to load customers");
       console.error("Error loading customers:", err);
@@ -86,13 +89,11 @@ export default function CustomerManagement() {
         name: form.name,
         phone: form.phone || null,
         email: form.email || null,
-        address: form.address || null,
-        notes: form.notes || null,
         locationId: form.locationId,
       });
 
       setShowModal(false);
-      setForm({ name: "", phone: "", email: "", address: "", notes: "", locationId: "" });
+      setForm({ name: "", phone: "", email: "", locationId: "" });
       loadCustomers();
     } catch (err: any) {
       setError(err.message || "Failed to create customer");
@@ -107,13 +108,11 @@ export default function CustomerManagement() {
         name: form.name,
         phone: form.phone || null,
         email: form.email || null,
-        address: form.address || null,
-        notes: form.notes || null,
       });
 
       setShowModal(false);
       setEditingId(null);
-      setForm({ name: "", phone: "", email: "", address: "", notes: "", locationId: "" });
+      setForm({ name: "", phone: "", email: "", locationId: "" });
       loadCustomers();
     } catch (err: any) {
       setError(err.message || "Failed to update customer");
@@ -136,8 +135,6 @@ export default function CustomerManagement() {
       name: customer.name,
       phone: customer.phone,
       email: customer.email,
-      address: customer.address,
-      notes: customer.notes,
       locationId: customer.locationId,
     });
     setEditingId(customer.id);
@@ -145,7 +142,7 @@ export default function CustomerManagement() {
   };
 
   const openCreateModal = () => {
-    setForm({ name: "", phone: "", email: "", address: "", notes: "", locationId: locations[0]?.id || "" });
+    setForm({ name: "", phone: "", email: "", locationId: locations[0]?.id || "" });
     setEditingId(null);
     setShowModal(true);
   };
@@ -342,30 +339,6 @@ export default function CustomerManagement() {
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                   className="w-full rounded-lg px-3 py-2 text-sm"
                   style={{ border: "1px solid #e2e8f0", color: "#374151" }}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748b" }}>
-                  Address
-                </label>
-                <input
-                  type="text"
-                  value={form.address}
-                  onChange={(e) => setForm({ ...form, address: e.target.value })}
-                  className="w-full rounded-lg px-3 py-2 text-sm"
-                  style={{ border: "1px solid #e2e8f0", color: "#374151" }}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748b" }}>
-                  Notes
-                </label>
-                <textarea
-                  value={form.notes}
-                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                  className="w-full rounded-lg px-3 py-2 text-sm"
-                  style={{ border: "1px solid #e2e8f0", color: "#374151" }}
-                  rows={3}
                 />
               </div>
               {!editingId && (

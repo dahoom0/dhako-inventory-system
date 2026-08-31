@@ -69,42 +69,73 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<User[]>([]);
 
-  // Initialize auth state from localStorage and fetch current user from API
+  // Initialize auth state from localStorage and verify token with backend
   useEffect(() => {
+    let cancelled = false; // guard against StrictMode double-invocation
+
     const initializeAuth = async () => {
       const token = localStorage.getItem("authToken");
       const storedUser = localStorage.getItem("user");
-      
-      if (token && storedUser) {
-        try {
-          // Try to fetch current user from API to verify token is still valid
-          const response = await authApi.getCurrentUser();
-          const backendUser = response;
-          
-          // Convert backend user to frontend format
-          const user: User = {
-            id: backendUser.id,
-            name: backendUser.name,
-            email: backendUser.email,
-            role: backendUser.role as UserRole,
-            accessibleLocations: getDefaultAccessibleLocations(backendUser.role),
-            createdAt: backendUser.created_at || new Date().toISOString(),
-          };
-          
-          setUser(user);
-          // Update localStorage with fresh user data
-          localStorage.setItem("user", JSON.stringify(user));
-        } catch (error) {
-          // Token is invalid or API call failed
-          console.error("Failed to validate auth token:", error);
+
+      if (!token || !storedUser) {
+        // No credentials stored — not logged in
+        if (!cancelled) setIsLoading(false);
+        return;
+      }
+
+      // Restore from localStorage immediately so UI doesn't flash login screen
+      try {
+        const parsed = JSON.parse(storedUser) as User;
+        if (!cancelled) setUser(parsed);
+      } catch {
+        // Corrupted stored user — clear and bail
+        localStorage.removeItem("authToken");
+        localStorage.removeItem("user");
+        if (!cancelled) setIsLoading(false);
+        return;
+      }
+
+      // Then verify token is still valid by calling /auth/me
+      try {
+        const backendUser = await authApi.getCurrentUser();
+        if (cancelled) return; // component unmounted — do nothing
+
+        const freshUser: User = {
+          id: backendUser.id,
+          name: backendUser.name,
+          email: backendUser.email,
+          role: backendUser.role as UserRole,
+          locationId: backendUser.location_id,
+          accessibleLocations: getDefaultAccessibleLocations(backendUser.role),
+          createdAt: backendUser.created_at || new Date().toISOString(),
+        };
+
+        setUser(freshUser);
+        localStorage.setItem("user", JSON.stringify(freshUser));
+      } catch (error: any) {
+        if (cancelled) return;
+        // Only clear credentials if the token is actually invalid/expired (401)
+        // Do NOT clear on network errors (status 0) — user might be offline
+        const status = error?.status ?? 0;
+        if (status === 401) {
+          console.warn("Auth token expired or invalid — clearing session");
           localStorage.removeItem("authToken");
           localStorage.removeItem("user");
+          setUser(null);
+        } else {
+          console.warn("Could not verify token (network error?) — keeping stored session", error?.message);
+          // Keep the user from localStorage; they'll get a proper error if they try an API call
         }
+      } finally {
+        if (!cancelled) setIsLoading(false);
       }
-      setIsLoading(false);
     };
 
     initializeAuth();
+
+    return () => {
+      cancelled = true; // cleanup: ignore result if StrictMode remounts
+    };
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
@@ -125,8 +156,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         name: response.user.name,
         email: response.user.email,
         role: response.user.role as UserRole,
-        // TODO: Get accessible locations from backend
-        // For now, we'll determine accessible locations based on role
+        locationId: response.user.location_id || response.user.locationId,
         accessibleLocations: getDefaultAccessibleLocations(response.user.role),
         createdAt: response.user.created_at || new Date().toISOString(),
       };

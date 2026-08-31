@@ -10,6 +10,7 @@ const getNavItems = (role?: UserRole): NavItem[] => {
   if (role === "ADMIN") {
     return [
       { icon: "⬡", label: "Dashboard", page: "dashboard", roles: ["ADMIN"] },
+      { icon: "🏷️", label: "Categories", page: "categories", roles: ["ADMIN"] },
       { icon: "🏭", label: "Warehouses", page: "location-management", roles: ["ADMIN"] },
       { icon: "📦", label: "Products", page: "product-management", roles: ["ADMIN"] },
       { icon: "👥", label: "Customers", page: "customer-management", roles: ["ADMIN"] },
@@ -26,6 +27,7 @@ const getNavItems = (role?: UserRole): NavItem[] => {
   if (role === "INVENTORY_MANAGER") {
     return [
       { icon: "⬡", label: "Dashboard", page: "dashboard", roles: ["INVENTORY_MANAGER"] },
+      { icon: "🏷️", label: "Categories", page: "categories", roles: ["INVENTORY_MANAGER"] },
       { icon: "📦", label: "Inventory", page: "inventory", roles: ["INVENTORY_MANAGER"] },
     ];
   }

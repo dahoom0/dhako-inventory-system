@@ -21,11 +21,13 @@ import UserManagement from "./pages/admin/UserManagement";
 import CustomerManagement from "./pages/admin/CustomerManagement";
 import LocationManagement from "./pages/admin/LocationManagement";
 import ProductManagement from "./pages/admin/ProductManagement";
+import CategoriesPage from "./pages/Categories";
 import Login from "./pages/Login";
 import Placeholder from "./pages/Placeholder";
 
 const PAGE_TITLES: Record<string, string> = {
   dashboard:          "Dashboard",
+  categories:         "Categories",
   inventory:          "Inventory",
   receiving:          "Receive Stock",
   transfers:          "Stock Transfers",
@@ -96,6 +98,7 @@ export default function App() {
     if (user?.role === "ADMIN") {
       switch (page) {
         case "dashboard":            return <AdminDashboardWithBranches />;
+        case "categories":           return <CategoriesPage />;
         case "sales":                return <Sales />;
         case "expenses":             return <Expenses />;
         case "debts":                return <Debts />;
@@ -117,6 +120,7 @@ export default function App() {
     if (user?.role === "INVENTORY_MANAGER") {
       switch (page) {
         case "dashboard":            return <InventoryManagerDashboard />;
+        case "categories":           return <CategoriesPage />;
         case "inventory":            return <Inventory />;
         case "receiving":            return <Receiving />;
         default:                     return <Placeholder title="Access Denied" />;

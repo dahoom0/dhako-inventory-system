@@ -14,6 +14,51 @@ export async function initializeDatabase() {
     console.log("\n🔧 Initializing database...\n");
 
     // ═══════════════════════════════════════════════════════════════════════
+    // STEP 0: Apply migrations (alter existing tables)
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log("🔄 Checking for migrations...");
+    try {
+      // Check if status column exists
+      const statusCheck = await db.query(
+        "SELECT column_name FROM information_schema.columns WHERE table_name = 'locations' AND column_name = 'status'"
+      );
+      
+      if (statusCheck.rows.length === 0) {
+        console.log("   📝 Applying migration: Add status column to locations");
+        await db.query("ALTER TABLE locations ADD COLUMN status TEXT NOT NULL DEFAULT 'ACTIVE'");
+        await db.query("ALTER TABLE locations ADD CONSTRAINT locations_status_check CHECK (status IN ('ACTIVE', 'INACTIVE'))");
+      }
+      
+      // Check if updated_at column exists
+      const updatedAtCheck = await db.query(
+        "SELECT column_name FROM information_schema.columns WHERE table_name = 'locations' AND column_name = 'updated_at'"
+      );
+      
+      if (updatedAtCheck.rows.length === 0) {
+        console.log("   📝 Applying migration: Add updated_at column to locations");
+        await db.query("ALTER TABLE locations ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT now()");
+      }
+      
+      // Check if unique index exists
+      const indexCheck = await db.query(
+        "SELECT indexname FROM pg_indexes WHERE tablename = 'locations' AND indexname = 'idx_locations_name_active'"
+      );
+      
+      if (indexCheck.rows.length === 0) {
+        console.log("   📝 Applying migration: Add unique constraint on active location names");
+        await db.query(
+          "CREATE UNIQUE INDEX idx_locations_name_active ON locations(name, status) WHERE status = 'ACTIVE'"
+        );
+      }
+      
+      console.log("   ✅ Migrations applied\n");
+    } catch (err: any) {
+      if (!err.message.includes("already exists") && !err.message.includes("column")) {
+        console.warn("⚠️  Migration warning:", err.message);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
     // STEP 1: Create schema from SQL file
     // ═══════════════════════════════════════════════════════════════════════
     console.log("📝 Creating schema...");
@@ -61,23 +106,7 @@ export async function initializeDatabase() {
     const locationCount = parseInt(locResult.rows[0].count, 10);
 
     if (locationCount === 0) {
-      console.log("   📍 Creating locations...");
-      const locations = [
-        { name: "Warehouse Mogadishu", type: "WAREHOUSE" },
-        { name: "Warehouse Hargeisa", type: "WAREHOUSE" },
-        { name: "Warehouse Kismayo", type: "WAREHOUSE" },
-        { name: "Branch Mogadishu Center", type: "BRANCH" },
-        { name: "Branch Hargeisa Downtown", type: "BRANCH" },
-        { name: "Branch Kismayo Port", type: "BRANCH" },
-      ];
-
-      for (const loc of locations) {
-        await db.query(
-          "INSERT INTO locations (name, type, created_at) VALUES ($1, $2, now())",
-          [loc.name, loc.type]
-        );
-      }
-      console.log(`      ✅ ${locations.length} locations created`);
+      console.log("   📍 Location seeding disabled - admin will create locations manually");
     }
 
     // Check user count
@@ -86,15 +115,11 @@ export async function initializeDatabase() {
 
     if (userCount === 0) {
       console.log("   👤 Creating users...");
-      const locIds = await db.query("SELECT id FROM locations ORDER BY created_at");
-      const warehouseIds = locIds.rows.slice(0, 3).map(r => r.id);
-      const branchIds = locIds.rows.slice(3, 6).map(r => r.id);
-
       const users = [
         { name: "System Admin", email: "admin@dhako.com", password: "admin123", role: "ADMIN", locationId: null },
-        { name: "Ahmed Hassan", email: "ahmed@dhako.com", password: "ahmed123", role: "INVENTORY_MANAGER", locationId: warehouseIds[0] },
-        { name: "Fatima Mohamed", email: "fatima@dhako.com", password: "fatima123", role: "BRANCH_MANAGER", locationId: branchIds[0] },
-        { name: "Hassan Ali", email: "hassan@dhako.com", password: "hassan123", role: "BRANCH_STAFF", locationId: branchIds[0] },
+        { name: "Ahmed Hassan", email: "ahmed@dhako.com", password: "ahmed123", role: "INVENTORY_MANAGER", locationId: null },
+        { name: "Fatima Mohamed", email: "fatima@dhako.com", password: "fatima123", role: "BRANCH_MANAGER", locationId: null },
+        { name: "Hassan Ali", email: "hassan@dhako.com", password: "hassan123", role: "BRANCH_STAFF", locationId: null },
       ];
 
       for (const user of users) {
@@ -112,32 +137,7 @@ export async function initializeDatabase() {
     const productCount = parseInt(prodResult.rows[0].count, 10);
 
     if (productCount === 0) {
-      console.log("   📦 Creating products...");
-      const products = [
-        { name: "Coca Cola 330ml", sku: "SKU-001", category: "Beverages", unit: "can", qty_per_ctn: 24, cost_per_ctn: 240, sell_per_ctn: 360, min_stock_ctn: 5 },
-        { name: "Pepsi 330ml", sku: "SKU-002", category: "Beverages", unit: "can", qty_per_ctn: 24, cost_per_ctn: 220, sell_per_ctn: 340, min_stock_ctn: 5 },
-        { name: "Sprite 330ml", sku: "SKU-003", category: "Beverages", unit: "can", qty_per_ctn: 24, cost_per_ctn: 200, sell_per_ctn: 320, min_stock_ctn: 5 },
-        { name: "Fanta Orange 330ml", sku: "SKU-004", category: "Beverages", unit: "can", qty_per_ctn: 24, cost_per_ctn: 180, sell_per_ctn: 300, min_stock_ctn: 4 },
-        { name: "Mineral Water 600ml", sku: "SKU-005", category: "Beverages", unit: "bottle", qty_per_ctn: 12, cost_per_ctn: 60, sell_per_ctn: 120, min_stock_ctn: 3 },
-        { name: "Instant Noodles Chicken", sku: "SKU-006", category: "Snacks", unit: "pack", qty_per_ctn: 30, cost_per_ctn: 420, sell_per_ctn: 600, min_stock_ctn: 10 },
-        { name: "Instant Noodles Beef", sku: "SKU-007", category: "Snacks", unit: "pack", qty_per_ctn: 30, cost_per_ctn: 420, sell_per_ctn: 600, min_stock_ctn: 10 },
-        { name: "Crackers Mixed", sku: "SKU-008", category: "Snacks", unit: "pack", qty_per_ctn: 20, cost_per_ctn: 350, sell_per_ctn: 500, min_stock_ctn: 5 },
-        { name: "Biscuits Assorted", sku: "SKU-009", category: "Snacks", unit: "pack", qty_per_ctn: 15, cost_per_ctn: 525, sell_per_ctn: 750, min_stock_ctn: 3 },
-        { name: "Cooking Oil 1L", sku: "SKU-010", category: "Cooking", unit: "bottle", qty_per_ctn: 12, cost_per_ctn: 660, sell_per_ctn: 960, min_stock_ctn: 4 },
-        { name: "Rice 2kg Bag", sku: "SKU-011", category: "Dry Goods", unit: "bag", qty_per_ctn: 10, cost_per_ctn: 400, sell_per_ctn: 600, min_stock_ctn: 5 },
-        { name: "Sugar 1kg Bag", sku: "SKU-012", category: "Dry Goods", unit: "bag", qty_per_ctn: 20, cost_per_ctn: 300, sell_per_ctn: 450, min_stock_ctn: 5 },
-        { name: "Salt 1kg Bag", sku: "SKU-013", category: "Dry Goods", unit: "bag", qty_per_ctn: 30, cost_per_ctn: 180, sell_per_ctn: 300, min_stock_ctn: 10 },
-        { name: "Milk Powder 900g", sku: "SKU-014", category: "Dairy", unit: "can", qty_per_ctn: 12, cost_per_ctn: 840, sell_per_ctn: 1200, min_stock_ctn: 3 },
-        { name: "Yogurt 500ml", sku: "SKU-015", category: "Dairy", unit: "pack", qty_per_ctn: 24, cost_per_ctn: 480, sell_per_ctn: 720, min_stock_ctn: 5 },
-      ];
-
-      for (const prod of products) {
-        await db.query(
-          "INSERT INTO products (name, sku, category, unit, qty_per_ctn, cost_per_ctn, sell_per_ctn, min_stock_ctn, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now(), now())",
-          [prod.name, prod.sku, prod.category, prod.unit, prod.qty_per_ctn, prod.cost_per_ctn, prod.sell_per_ctn, prod.min_stock_ctn, "ACTIVE"]
-        );
-      }
-      console.log(`      ✅ ${products.length} products created`);
+      console.log("   📦 Products seeding disabled - admin will create products manually");
     }
 
     // Check stock movements count
@@ -145,42 +145,7 @@ export async function initializeDatabase() {
     const movementCount = parseInt(movResult.rows[0].count, 10);
 
     if (movementCount === 0) {
-      console.log("   📊 Creating initial stock...");
-      const adminUser = await db.query("SELECT id FROM users WHERE email = $1", ["admin@dhako.com"]);
-      const userId = adminUser.rows[0].id;
-
-      const locations = await db.query("SELECT id, type FROM locations ORDER BY created_at");
-      const warehouseIds = locations.rows.filter(r => r.type === "WAREHOUSE").map(r => r.id);
-      const branchIds = locations.rows.filter(r => r.type === "BRANCH").map(r => r.id);
-
-      const products = await db.query("SELECT id, cost_per_ctn FROM products ORDER BY created_at");
-
-      let totalMovements = 0;
-
-      // Add stock to warehouses
-      for (const warehouse of warehouseIds) {
-        for (const product of products.rows) {
-          const qty = Math.floor(Math.random() * 30) + 10;
-          await db.query(
-            "INSERT INTO stock_movements (type, product_id, from_location_id, to_location_id, qty_ctn, cost_per_ctn, created_by, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, now())",
-            ["STOCK_RECEIVED", product.id, null, warehouse, qty, product.cost_per_ctn, userId]
-          );
-          totalMovements++;
-        }
-      }
-
-      // Add stock to branches
-      for (const branch of branchIds) {
-        for (const product of products.rows.slice(0, 10)) {
-          const qty = Math.floor(Math.random() * 15) + 3;
-          await db.query(
-            "INSERT INTO stock_movements (type, product_id, from_location_id, to_location_id, qty_ctn, cost_per_ctn, created_by, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, now())",
-            ["STOCK_RECEIVED", product.id, null, branch, qty, product.cost_per_ctn, userId]
-          );
-          totalMovements++;
-        }
-      }
-      console.log(`      ✅ ${totalMovements} stock movements created`);
+      console.log("   📊 Stock movements seeding disabled - populate after locations are created");
     }
 
     // Check customer count
@@ -188,26 +153,7 @@ export async function initializeDatabase() {
     const customerCount = parseInt(custResult.rows[0].count, 10);
 
     if (customerCount === 0) {
-      console.log("   👥 Creating customers...");
-      const locations = await db.query("SELECT id FROM locations WHERE type = $1 ORDER BY created_at", ["BRANCH"]);
-      const branchIds = locations.rows.map(r => r.id);
-
-      const customers = [
-        { name: "Ali Mohamed Store", phone: "+252615123456", email: "ali@store.com", locationId: branchIds[0] },
-        { name: "Habiba Trading", phone: "+252614234567", email: "habiba@trade.com", locationId: branchIds[0] },
-        { name: "Hassan General Goods", phone: "+252613345678", email: "hassan@goods.com", locationId: branchIds[1] },
-        { name: "Zainab Wholesale", phone: "+252612456789", email: "zainab@whole.com", locationId: branchIds[1] },
-        { name: "Ibrahim Market", phone: "+252611567890", email: "ibrahim@market.com", locationId: branchIds[2] },
-        { name: "Amina Retail Shop", phone: "+252610678901", email: "amina@retail.com", locationId: branchIds[2] },
-      ];
-
-      for (const cust of customers) {
-        await db.query(
-          "INSERT INTO customers (name, phone, email, location_id, created_at) VALUES ($1, $2, $3, $4, now())",
-          [cust.name, cust.phone, cust.email, cust.locationId]
-        );
-      }
-      console.log(`      ✅ ${customers.length} customers created`);
+      console.log("   👥 Customer seeding disabled - create after locations are set up");
     }
 
     // Summary

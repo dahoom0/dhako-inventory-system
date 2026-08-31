@@ -4,17 +4,21 @@ import { useLocations } from "../context/LocationContext";
 import { PageHeader, Card, Btn, Th, Td } from "@/components/ui";
 import { PrintButton } from "@/components/PrintButton";
 import { exportInventoryToExcel } from "@/utils/excelExport";
+import { inventoryApi } from "@/utils/api";
 
 interface InventoryItem {
-  id: string;
-  product: string;
-  quantity: number;
-  cartoons: number;
-  location: string;
+  productId: string;
+  productName: string;
+  locationId: string;
+  locationName: string;
+  locationType: string;
+  qtyCtn: number;
+  qtyUnits: number;
+  costValue: number;
+  minStockCtn: number;
+  costPerCtn: number;
+  sellPerCtn: number;
   lastUpdated: string;
-  minStock: number;
-  cost: number;
-  sellPrice: number;
 }
 
 interface Movement {
@@ -27,53 +31,83 @@ interface Movement {
   status: string;
 }
 
-const MOCK_INVENTORY: InventoryItem[] = [
-  { id: "I001", product: "Coca Cola 330ml", quantity: 500, cartoons: 21, location: "w1", lastUpdated: "2026-08-25", minStock: 100, cost: 22, sellPrice: 36 },
-  { id: "I002", product: "Mineral Water 600ml", quantity: 320, cartoons: 13, location: "w1", lastUpdated: "2026-08-24", minStock: 80, cost: 12, sellPrice: 16 },
-  { id: "I003", product: "Orange Juice 1L", quantity: 150, cartoons: 6, location: "w2", lastUpdated: "2026-08-23", minStock: 50, cost: 30, sellPrice: 36 },
-  { id: "I004", product: "Instant Noodles", quantity: 800, cartoons: 33, location: "w2", lastUpdated: "2026-08-25", minStock: 200, cost: 28, sellPrice: 38 },
-  { id: "I005", product: "Biscuits Assorted", quantity: 400, cartoons: 16, location: "w3", lastUpdated: "2026-08-22", minStock: 100, cost: 35, sellPrice: 50 },
-  { id: "I006", product: "Cooking Oil 1L", quantity: 200, cartoons: 8, location: "b1", lastUpdated: "2026-08-25", minStock: 40, cost: 55, sellPrice: 80 },
-  { id: "I007", product: "Coca Cola 330ml", quantity: 100, cartoons: 4, location: "b1", lastUpdated: "2026-08-24", minStock: 30, cost: 22, sellPrice: 36 },
-  { id: "I008", product: "Mineral Water 600ml", quantity: 150, cartoons: 6, location: "b2", lastUpdated: "2026-08-23", minStock: 30, cost: 12, sellPrice: 16 },
-  { id: "I009", product: "Instant Noodles", quantity: 120, cartoons: 5, location: "b3", lastUpdated: "2026-08-22", minStock: 40, cost: 28, sellPrice: 38 },
-];
-
-const MOCK_MOVEMENTS: Movement[] = [
-  { id: "M001", product: "Coca Cola 330ml", from: "w1", to: "b1", quantity: 100, date: "2026-08-25", status: "Received" },
-  { id: "M002", product: "Mineral Water 600ml", from: "w1", to: "b2", quantity: 150, date: "2026-08-24", status: "Received" },
-  { id: "M003", product: "Instant Noodles", from: "w2", to: "b1", quantity: 200, date: "2026-08-23", status: "Sent" },
-  { id: "M004", product: "Cooking Oil 1L", from: "w3", to: "b1", quantity: 80, date: "2026-08-22", status: "Received" },
-  { id: "M005", product: "Biscuits Assorted", from: "w3", to: "b3", quantity: 100, date: "2026-08-21", status: "Pending" },
-];
+const fmt = (n: number) => Number(n).toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
 
 const Inventory: React.FC = () => {
   const { user, getAccessibleLocations } = useAuth();
   const { locations: contextLocations, getLocationName } = useLocations();
-  const [selectedLocation, setSelectedLocation] = useState<string>("w1");
+  const [selectedLocation, setSelectedLocation] = useState<string>("");
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState<"inventory" | "movements">("inventory");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    loadInventoryData();
+    // Initialize with first location if available
+    if (contextLocations.length > 0 && !selectedLocation) {
+      setSelectedLocation(contextLocations[0].id);
+    }
+  }, [contextLocations]);
+
+  // Reload inventory whenever selected location changes
+  useEffect(() => {
+    if (selectedLocation) {
+      loadInventoryData();
+    }
   }, [selectedLocation]);
 
-  const loadInventoryData = () => {
-    // Filter inventory for selected location
-    const locationInventory = MOCK_INVENTORY.filter((item) => item.location === selectedLocation);
-    setInventory(locationInventory);
+  const loadInventoryData = async () => {
+    setLoading(true);
+    try {
+      // Fetch matrix and products in parallel
+      const [matrixData, productsResp] = await Promise.all([
+        inventoryApi.getInventoryMatrix(),
+        fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/v1/products`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
+        }).then(r => r.json()),
+      ]);
 
-    // Filter movements involving this location
-    const locationMovements = MOCK_MOVEMENTS.filter(
-      (m) => m.from === selectedLocation || m.to === selectedLocation
-    );
-    setMovements(locationMovements);
+      // API wrapper returns inner data directly for matrix
+      const matrix: any[] = Array.isArray(matrixData) ? matrixData : [];
+
+      // Products: paginated response → { success, data: { data: [...] } }
+      const rawProducts = productsResp?.data?.data ?? productsResp?.data ?? [];
+      const productsArr: any[] = Array.isArray(rawProducts) ? rawProducts : [];
+      const productsMap = new Map(productsArr.map((p: any) => [p.id, p]));
+
+      // Filter to selected location only
+      const locationInventory: InventoryItem[] = matrix
+        .filter((item: any) => item.locationId === selectedLocation)
+        .map((item: any) => {
+          const product: any = productsMap.get(item.productId) || {};
+          return {
+            productId:    item.productId,
+            productName:  item.productName,
+            locationId:   item.locationId,
+            locationName: item.locationName,
+            locationType: item.locationType,
+            qtyCtn:       item.qtyCtn,
+            qtyUnits:     item.qtyUnits,
+            costValue:    item.costValue,
+            minStockCtn:  product.minStockCtn  ?? product.min_stock_ctn  ?? 0,
+            costPerCtn:   product.costPerCtn   ?? product.cost_per_ctn   ?? 0,
+            sellPerCtn:   product.sellPerCtn   ?? product.sell_per_ctn   ?? 0,
+            lastUpdated:  new Date().toISOString().split("T")[0],
+          };
+        });
+
+      setInventory(locationInventory);
+      setMovements([]);
+    } catch (error) {
+      console.error("Error loading inventory data:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getLowStockItems = () => {
-    return inventory.filter((item) => item.quantity < item.minStock);
+    return inventory.filter((item) => item.qtyCtn < item.minStockCtn);
   };
 
   const handleExportInventory = () => {
@@ -82,16 +116,16 @@ const Inventory: React.FC = () => {
     
     // Transform inventory data for export
     const exportData = filteredInventory.map((item) => ({
-      product: item.product,
-      sku: `SKU-${item.id}`, // Generate SKU if not available
+      product: item.productName,
+      sku: `SKU-${item.productId}`, // Generate SKU if not available
       category: "General", // Default category if not available
       location: locationName,
-      quantity: item.quantity,
-      cartoons: item.cartoons,
-      minStock: item.minStock,
-      costPerUnit: (item.cost / (item.cartoons || 1)).toFixed(2),
-      sellPrice: item.sellPrice.toFixed(2),
-      status: item.quantity < item.minStock ? "Low Stock" : "In Stock",
+      quantity: item.qtyUnits,
+      cartoons: item.qtyCtn,
+      minStock: item.minStockCtn,
+      costPerUnit: (item.costPerCtn / 20).toFixed(2),
+      sellPrice: item.sellPerCtn.toFixed(2),
+      status: item.qtyCtn < item.minStockCtn ? "Low Stock" : "In Stock",
       lastUpdated: item.lastUpdated,
     }));
 
@@ -101,7 +135,7 @@ const Inventory: React.FC = () => {
   const filteredInventory = searchTerm
     ? inventory.filter(
         (item) =>
-          item.product.toLowerCase().includes(searchTerm.toLowerCase())
+          item.productName.toLowerCase().includes(searchTerm.toLowerCase())
       )
     : inventory;
 
@@ -168,7 +202,7 @@ const Inventory: React.FC = () => {
         <Card className="p-4 bg-purple-50 border-l-4 border-purple-500">
           <div className="text-sm text-gray-600">Total Units:</div>
           <div className="text-2xl font-bold text-purple-900 mt-1">
-            {inventory.reduce((sum, item) => sum + item.quantity, 0)}
+            {inventory.reduce((sum, item) => sum + item.qtyUnits, 0)}
           </div>
         </Card>
 
@@ -231,8 +265,8 @@ const Inventory: React.FC = () => {
                     </div>
                     <div className="mt-2 space-y-1">
                       {getLowStockItems().map((item) => (
-                        <div key={item.id} className="text-sm text-red-700">
-                          • {item.product}: {item.quantity} units (Min: {item.minStock})
+                        <div key={item.productId} className="text-sm text-red-700">
+                          • {item.productName}: {item.qtyUnits} units (Min: {item.minStockCtn})
                         </div>
                       ))}
                     </div>
@@ -265,19 +299,19 @@ const Inventory: React.FC = () => {
                     </tr>
                   ) : (
                     filteredInventory.map((item) => {
-                      const isLowStock = item.quantity < item.minStock;
-                      const costPerUnit = item.cost / (item.cartoons || 1);
+                      const isLowStock = item.qtyCtn < item.minStockCtn;
                       return (
-                        <tr key={item.id} style={{ borderBottom: "1px solid #f8fafc" }}>
+                        <tr key={item.productId} style={{ borderBottom: "1px solid #f8fafc" }}>
                           <Td>
-                            <span className="font-semibold">{item.product}</span>
+                            <span className="font-semibold">{item.productName}</span>
+                            <div className="text-xs" style={{ color: "#64748b" }}>{item.locationName}</div>
                           </Td>
-                          <Td className="text-center font-bold">{item.quantity}</Td>
-                          <Td className="text-center">{item.cartoons} CTN</Td>
-                          <Td className="text-center">{item.minStock}</Td>
-                          <Td className="text-right">${costPerUnit.toFixed(2)}</Td>
+                          <Td className="text-center font-bold">{item.qtyUnits}</Td>
+                          <Td className="text-center">{item.qtyCtn} CTN</Td>
+                          <Td className="text-center">{item.minStockCtn}</Td>
+                          <Td className="text-right">${fmt(item.costPerCtn)}</Td>
                           <Td className="text-right font-semibold" style={{ color: "#16a34a" }}>
-                            ${item.sellPrice.toFixed(2)}
+                            ${fmt(item.sellPerCtn)}
                           </Td>
                           <Td>
                             <span

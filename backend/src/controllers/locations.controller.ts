@@ -2,16 +2,18 @@ import { Request, Response } from "express";
 import { db } from "../config/db";
 import { Location } from "../models/types";
 
-// GET all locations (warehouses and branches)
+// GET all locations (warehouses and branches) - only ACTIVE
 export const getLocations = async (req: Request, res: Response) => {
   try {
-    const result = await db.query<Location & { created_at: string }>(
+    const result = await db.query<Location & { created_at: string; status: string }>(
       `SELECT 
         id, 
         name, 
         type, 
+        status,
         created_at 
        FROM locations 
+       WHERE status = 'ACTIVE'
        ORDER BY type ASC, name ASC`
     );
 
@@ -19,6 +21,7 @@ export const getLocations = async (req: Request, res: Response) => {
       id: row.id,
       name: row.name,
       type: row.type,
+      status: row.status,
       createdAt: new Date(row.created_at),
     }));
 
@@ -64,17 +67,18 @@ export const getLocationById = async (req: Request, res: Response) => {
   }
 };
 
-// GET all warehouses
+// GET all warehouses - only ACTIVE
 export const getWarehouses = async (req: Request, res: Response) => {
   try {
-    const result = await db.query<Location & { created_at: string }>(
+    const result = await db.query<Location & { created_at: string; status: string }>(
       `SELECT 
         id, 
         name, 
         type, 
+        status,
         created_at 
        FROM locations 
-       WHERE type = 'WAREHOUSE' 
+       WHERE type = 'WAREHOUSE' AND status = 'ACTIVE'
        ORDER BY name ASC`
     );
 
@@ -82,6 +86,7 @@ export const getWarehouses = async (req: Request, res: Response) => {
       id: row.id,
       name: row.name,
       type: row.type,
+      status: row.status,
       createdAt: new Date(row.created_at),
     }));
 
@@ -92,17 +97,18 @@ export const getWarehouses = async (req: Request, res: Response) => {
   }
 };
 
-// GET all branches
+// GET all branches - only ACTIVE
 export const getBranches = async (req: Request, res: Response) => {
   try {
-    const result = await db.query<Location & { created_at: string }>(
+    const result = await db.query<Location & { created_at: string; status: string }>(
       `SELECT 
         id, 
         name, 
         type, 
+        status,
         created_at 
        FROM locations 
-       WHERE type = 'BRANCH' 
+       WHERE type = 'BRANCH' AND status = 'ACTIVE'
        ORDER BY name ASC`
     );
 
@@ -110,6 +116,7 @@ export const getBranches = async (req: Request, res: Response) => {
       id: row.id,
       name: row.name,
       type: row.type,
+      status: row.status,
       createdAt: new Date(row.created_at),
     }));
 
@@ -138,9 +145,9 @@ export const createLocation = async (req: Request, res: Response) => {
         .json({ success: false, error: "Type must be WAREHOUSE or BRANCH" });
     }
 
-    // Check if location with same name already exists
+    // Check if location with same name already exists (among ACTIVE locations)
     const existingCheck = await db.query(
-      `SELECT id FROM locations WHERE name = $1`,
+      `SELECT id FROM locations WHERE name = $1 AND status = 'ACTIVE'`,
       [name]
     );
 
@@ -151,10 +158,10 @@ export const createLocation = async (req: Request, res: Response) => {
     }
 
     // Create location
-    const result = await db.query<Location & { created_at: string }>(
-      `INSERT INTO locations (name, type) 
-       VALUES ($1, $2) 
-       RETURNING id, name, type, created_at`,
+    const result = await db.query<Location & { created_at: string; status: string }>(
+      `INSERT INTO locations (name, type, status, created_at, updated_at) 
+       VALUES ($1, $2, 'ACTIVE', now(), now()) 
+       RETURNING id, name, type, status, created_at`,
       [name, type]
     );
 
@@ -163,6 +170,7 @@ export const createLocation = async (req: Request, res: Response) => {
       id: row.id,
       name: row.name,
       type: row.type,
+      status: row.status,
       createdAt: new Date(row.created_at),
     };
 
@@ -183,19 +191,22 @@ export const updateLocation = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: "Name is required" });
     }
 
-    // Check if location exists
-    const checkResult = await db.query(`SELECT id FROM locations WHERE id = $1`, [id]);
+    // Check if location exists and is ACTIVE
+    const checkResult = await db.query(
+      `SELECT id FROM locations WHERE id = $1 AND status = 'ACTIVE'`,
+      [id]
+    );
 
     if (checkResult.rows.length === 0) {
       return res.status(404).json({ success: false, error: "Location not found" });
     }
 
     // Update location
-    const result = await db.query<Location & { created_at: string }>(
+    const result = await db.query<Location & { created_at: string; updated_at: string; status: string }>(
       `UPDATE locations 
-       SET name = $1 
+       SET name = $1, updated_at = now()
        WHERE id = $2 
-       RETURNING id, name, type, created_at`,
+       RETURNING id, name, type, status, created_at, updated_at`,
       [name, id]
     );
 
@@ -204,13 +215,109 @@ export const updateLocation = async (req: Request, res: Response) => {
       id: row.id,
       name: row.name,
       type: row.type,
+      status: row.status,
       createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
     };
 
     return res.json({ success: true, data: location });
   } catch (error) {
     console.error("Error updating location:", error);
     return res.status(500).json({ success: false, error: "Failed to update location" });
+  }
+};
+
+// DEACTIVATE a location (soft-delete) - preserves historical data
+export const deactivateLocation = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Check if location exists and is ACTIVE
+    const checkResult = await db.query(
+      `SELECT id, status FROM locations WHERE id = $1`,
+      [id]
+    );
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: "Location not found" });
+    }
+
+    if (checkResult.rows[0].status === "INACTIVE") {
+      return res.status(400).json({ success: false, error: "Location is already inactive" });
+    }
+
+    // Deactivate location (soft-delete)
+    // Historical transactions remain intact, location just won't appear in active lists
+    const result = await db.query<Location & { status: string; updated_at: string }>(
+      `UPDATE locations 
+       SET status = 'INACTIVE', updated_at = now()
+       WHERE id = $1 
+       RETURNING id, name, type, status, updated_at`,
+      [id]
+    );
+
+    const row = result.rows[0];
+    const location = {
+      id: row.id,
+      status: row.status,
+      updatedAt: new Date(row.updated_at),
+    };
+
+    return res.json({ success: true, data: location, message: "Location deactivated successfully" });
+  } catch (error) {
+    console.error("Error deactivating location:", error);
+    return res.status(500).json({ success: false, error: "Failed to deactivate location" });
+  }
+};
+
+// DELETE a location (hard-delete) - for complete cleanup only
+export const deleteLocation = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Check if location exists
+    const checkResult = await db.query(
+      `SELECT id FROM locations WHERE id = $1`,
+      [id]
+    );
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: "Location not found" });
+    }
+
+    // Check if location has users assigned to it
+    const userCheck = await db.query(
+      `SELECT COUNT(*) as count FROM users WHERE location_id = $1`,
+      [id]
+    );
+
+    if (parseInt(userCheck.rows[0].count) > 0) {
+      return res.status(409).json({
+        success: false,
+        error: "Cannot delete location with assigned users",
+      });
+    }
+
+    // Check if location has inventory/stock movements
+    const stockCheck = await db.query(
+      `SELECT COUNT(*) as count FROM stock_movements WHERE from_location_id = $1 OR to_location_id = $1`,
+      [id]
+    );
+
+    if (parseInt(stockCheck.rows[0].count) > 0) {
+      return res.status(409).json({
+        success: false,
+        error: "Cannot delete location with stock movements. Use deactivate instead.",
+      });
+    }
+
+    // Delete location (hard-delete - only allowed if no history)
+    await db.query(`DELETE FROM locations WHERE id = $1`, [id]);
+
+    return res.json({ success: true, data: { id }, message: "Location permanently deleted" });
+  } catch (error) {
+    console.error("Error deleting location:", error);
+    return res.status(500).json({ success: false, error: "Failed to delete location" });
   }
 };
 

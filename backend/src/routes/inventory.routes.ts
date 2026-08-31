@@ -9,6 +9,7 @@ import {
   getLowStockAlerts,
   getInventoryMovements,
   getStockLevel,
+  receiveStock,
 } from "../controllers/inventory.controller";
 
 const router = Router();
@@ -21,5 +22,8 @@ router.get("/warehouse/:warehouseId", authenticate, getWarehouseInventory);
 router.get("/branch/:branchId", authenticate, getBranchInventory);
 router.get("/product/:productId", authenticate, getProductInventoryDistribution);
 router.get("/stock/:productId/:locationId", authenticate, getStockLevel);
+
+// POST receive stock (add stock to existing or new product)
+router.post("/receive-stock", authenticate, receiveStock);
 
 export default router;

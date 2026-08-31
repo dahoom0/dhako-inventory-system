@@ -92,6 +92,24 @@ async function apiRequest<T = any>(
       headers,
     });
 
+    // Guard: reject non-JSON responses immediately with a clear error
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      const preview = await response.text();
+      console.error("🚨 Non-JSON response from API:", {
+        url,
+        status: response.status,
+        contentType,
+        preview: preview.slice(0, 300),
+      });
+      throw new ApiError(
+        response.status,
+        `Server returned ${contentType || "unknown content-type"} instead of JSON. ` +
+          `This usually means the API route does not exist (404) or the server crashed (500).`,
+        { url, contentType, preview: preview.slice(0, 300) }
+      );
+    }
+
     const data: ApiResponse<T> = await response.json();
     
     console.log(`📥 API Response (${response.status}):`, data);
@@ -107,19 +125,22 @@ async function apiRequest<T = any>(
         });
       }
       
-      throw new ApiError(
-        response.status,
-        data.error || data.message || 'API request failed',
-        data
-      );
+      // data.error may be an object { code, message } or a plain string
+      const errorMsg =
+        typeof data.error === "object" && data.error !== null
+          ? (data.error as any).message || JSON.stringify(data.error)
+          : data.error || data.message || "API request failed";
+
+      throw new ApiError(response.status, errorMsg, data);
     }
 
     if (!data.success) {
-      throw new ApiError(
-        response.status,
-        data.error || 'API request was unsuccessful',
-        data
-      );
+      const errorMsg =
+        typeof data.error === "object" && data.error !== null
+          ? (data.error as any).message || JSON.stringify(data.error)
+          : data.error || "API request was unsuccessful";
+
+      throw new ApiError(response.status, errorMsg, data);
     }
 
     return data.data as T;
@@ -321,6 +342,20 @@ export const locationApi = {
   getBranches: () => api.get<any[]>('/locations/branches'),
   
   getLocation: (id: string) => api.get<any>(`/locations/${id}`),
+  
+  getLocationStats: (id: string) => api.get<any>(`/locations/${id}/stats`),
+  
+  createLocation: (name: string, type: 'WAREHOUSE' | 'BRANCH') =>
+    api.post<any>('/locations', { name, type }),
+  
+  updateLocation: (id: string, name: string) =>
+    api.patch<any>(`/locations/${id}`, { name }),
+  
+  deactivateLocation: (id: string) =>
+    api.patch<any>(`/locations/${id}/deactivate`, {}),
+  
+  deleteLocation: (id: string) =>
+    api.delete<any>(`/locations/${id}`),
 };
 
 /**
@@ -344,6 +379,25 @@ export const productApi = {
   deleteProduct: (id: string) => api.delete(`/products/${id}`),
   
   getCategories: () => api.get<any[]>('/products/categories'),
+  
+  // Receive stock for existing product
+  receiveStock: (stockData: { productId: string; warehouseId: string; qtyCtn: number; costPerCtn: number; supplier?: string; notes?: string }) =>
+    api.post<any>('/receiving', stockData),
+};
+
+/**
+ * Category API endpoints (full CRUD)
+ */
+export const categoryApi = {
+  getCategories: () => api.get<any[]>('/categories'),
+  
+  getCategory: (id: string) => api.get<any>(`/categories/${id}`),
+  
+  createCategory: (name: string) => api.post<any>('/categories', { name }),
+  
+  updateCategory: (id: string, name: string) => api.patch<any>(`/categories/${id}`, { name }),
+  
+  deleteCategory: (id: string) => api.delete<any>(`/categories/${id}`),
 };
 
 /**
@@ -357,28 +411,59 @@ export const inventoryApi = {
   
   getInventoryMatrix: () => api.get<any[]>('/inventory/matrix'),
   
-  getLowStockAlerts: () => api.get<any[]>('/inventory/low-stock-alerts'),
+  getLowStockAlerts: (params?: { locationType?: string; locationId?: string; severity?: string }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.locationType) queryParams.append('locationType', params.locationType);
+    if (params?.locationId) queryParams.append('locationId', params.locationId);
+    if (params?.severity) queryParams.append('severity', params.severity);
+    
+    const query = queryParams.toString();
+    return api.get<any[]>(`/inventory/alerts${query ? `?${query}` : ''}`);
+  },
+  
+  getInventoryMovements: (params?: { page?: number; limit?: number; type?: string; productId?: string; locationId?: string; startDate?: string; endDate?: string }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.type) queryParams.append('type', params.type);
+    if (params?.productId) queryParams.append('productId', params.productId);
+    if (params?.locationId) queryParams.append('locationId', params.locationId);
+    if (params?.startDate) queryParams.append('startDate', params.startDate);
+    if (params?.endDate) queryParams.append('endDate', params.endDate);
+    
+    const query = queryParams.toString();
+    return api.get<any[]>(`/inventory/movements${query ? `?${query}` : ''}`);
+  },
   
   updateStock: (productId: string, locationId: string, quantity: number) =>
     api.post<any>('/inventory/update-stock', { productId, locationId, quantity }),
+  
+  receiveStock: (stockData: any) =>
+    api.post<any>('/inventory/receive-stock', stockData),
 };
 
 /**
  * Sales API endpoints
  */
 export const salesApi = {
-  getSales: (params?: { page?: number; limit?: number; dateFrom?: string; dateTo?: string }) => {
+  getSales: (params?: { page?: number; limit?: number; dateFrom?: string; dateTo?: string; locationId?: string }) => {
     const queryParams = new URLSearchParams();
     if (params?.page) queryParams.append('page', params.page.toString());
     if (params?.limit) queryParams.append('limit', params.limit.toString());
     if (params?.dateFrom) queryParams.append('dateFrom', params.dateFrom);
     if (params?.dateTo) queryParams.append('dateTo', params.dateTo);
+    if (params?.locationId) queryParams.append('locationId', params.locationId);
     
     const query = queryParams.toString();
     return api.get<any[]>(`/sales${query ? `?${query}` : ''}`);
   },
   
   createSale: (saleData: any) => api.post<any>('/sales', saleData),
+  
+  voidSale: (saleId: string) => api.delete<any>(`/sales/${saleId}`),
+
+  updateSale: (saleId: string, data: { paymentMethod?: string; paymentNote?: string; items?: { productId: string; sellPricePerCtn: number }[] }) =>
+    api.patch<any>(`/sales/${saleId}`, data),
   
   getSalesReport: (params?: { startDate?: string; endDate?: string; locationId?: string }) => {
     const queryParams = new URLSearchParams();
@@ -395,7 +480,14 @@ export const salesApi = {
  * Analytics API endpoints
  */
 export const analyticsApi = {
-  getDashboardStats: () => api.get<any>('/analytics/dashboard-stats'),
+  getDashboardStats: (params?: { locationId?: string; dateFrom?: string; dateTo?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.locationId) q.append("locationId", params.locationId);
+    if (params?.dateFrom)   q.append("dateFrom",   params.dateFrom);
+    if (params?.dateTo)     q.append("dateTo",     params.dateTo);
+    const qs = q.toString();
+    return api.get<any>(`/analytics/dashboard-stats${qs ? `?${qs}` : ""}`);
+  },
   
   getSalesAnalytics: (params?: { period?: string; locationId?: string }) => {
     const queryParams = new URLSearchParams();

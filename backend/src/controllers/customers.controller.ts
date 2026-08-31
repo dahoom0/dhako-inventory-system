@@ -9,8 +9,6 @@ const createCustomerSchema = z.object({
   name: z.string().min(1, "Name is required"),
   phone: z.string().optional().nullable(),
   email: z.string().email().optional().nullable(),
-  address: z.string().optional().nullable(),
-  notes: z.string().optional().nullable(),
   locationId: z.string().uuid("Invalid location ID"),
 });
 
@@ -36,7 +34,7 @@ export async function listCustomers(req: AuthRequest, res: Response) {
 
   // Build query with filters
   let queryStr = `
-    SELECT c.id, c.name, c.phone, c.email, c.address, c.notes, c.location_id, c.created_at, c.updated_at
+    SELECT c.id, c.name, c.phone, c.email, c.location_id, c.created_at
     FROM customers c
     WHERE 1=1
   `;
@@ -82,11 +80,8 @@ export async function listCustomers(req: AuthRequest, res: Response) {
         name: row.name,
         phone: row.phone,
         email: row.email,
-        address: row.address,
-        notes: row.notes,
         locationId: row.location_id,
         createdAt: row.created_at,
-        updatedAt: row.updated_at,
       })),
       total,
       page: query.page,
@@ -115,7 +110,7 @@ export async function getCustomer(req: AuthRequest, res: Response) {
   }
 
   const result = await db.query(
-    `SELECT id, name, phone, email, address, notes, location_id, created_at, updated_at
+    `SELECT id, name, phone, email, location_id, created_at
      FROM customers c
      WHERE c.id = $1${locationCheck}`,
     params
@@ -133,11 +128,8 @@ export async function getCustomer(req: AuthRequest, res: Response) {
       name: row.name,
       phone: row.phone,
       email: row.email,
-      address: row.address,
-      notes: row.notes,
       locationId: row.location_id,
       createdAt: row.created_at,
-      updatedAt: row.updated_at,
     },
   });
 }
@@ -163,10 +155,10 @@ export async function createCustomer(req: AuthRequest, res: Response) {
   }
 
   const result = await db.query(
-    `INSERT INTO customers (id, name, phone, email, address, notes, location_id, created_at, updated_at)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, now(), now())
-     RETURNING id, name, phone, email, address, notes, location_id, created_at, updated_at`,
-    [data.name, data.phone || null, data.email || null, data.address || null, data.notes || null, data.locationId]
+    `INSERT INTO customers (name, phone, email, location_id, created_at)
+     VALUES ($1, $2, $3, $4, now())
+     RETURNING id, name, phone, email, location_id, created_at`,
+    [data.name, data.phone || null, data.email || null, data.locationId]
   );
 
   const row = result.rows[0];
@@ -177,11 +169,8 @@ export async function createCustomer(req: AuthRequest, res: Response) {
       name: row.name,
       phone: row.phone,
       email: row.email,
-      address: row.address,
-      notes: row.notes,
       locationId: row.location_id,
       createdAt: row.created_at,
-      updatedAt: row.updated_at,
     },
   });
 }
@@ -236,28 +225,18 @@ export async function updateCustomer(req: AuthRequest, res: Response) {
     updates.push(`email = $${paramIndex++}`);
     values.push(data.email);
   }
-  if (data.address !== undefined) {
-    updates.push(`address = $${paramIndex++}`);
-    values.push(data.address);
-  }
-  if (data.notes !== undefined) {
-    updates.push(`notes = $${paramIndex++}`);
-    values.push(data.notes);
-  }
 
-  updates.push(`updated_at = now()`);
-  values.push(id);
-
-  if (updates.length === 1) {
-    // Only updated_at changed, nothing to update
+  if (updates.length === 0) {
     throw new ApiError(ErrorCode.INVALID_OPERATION, "No fields to update", 400);
   }
+
+  values.push(id);
 
   const result = await db.query(
     `UPDATE customers
      SET ${updates.join(", ")}
      WHERE id = $${paramIndex}
-     RETURNING id, name, phone, email, address, notes, location_id, created_at, updated_at`,
+     RETURNING id, name, phone, email, location_id, created_at`,
     values
   );
 
@@ -273,11 +252,8 @@ export async function updateCustomer(req: AuthRequest, res: Response) {
       name: row.name,
       phone: row.phone,
       email: row.email,
-      address: row.address,
-      notes: row.notes,
       locationId: row.location_id,
       createdAt: row.created_at,
-      updatedAt: row.updated_at,
     },
   });
 }

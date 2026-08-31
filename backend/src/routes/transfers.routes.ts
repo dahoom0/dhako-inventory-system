@@ -14,12 +14,12 @@ const router = Router();
 router.get("/", authenticate, getTransfers);
 router.get("/:transferId", authenticate, getTransferById);
 
-// Store Manager and Admin can create and manage transfers
-router.post("/", authenticate, requireRole("ADMIN", "STORE_MANAGER"), createTransfer);
+// INVENTORY_MANAGER, STORE_MANAGER and Admin can create and manage transfers
+router.post("/", authenticate, requireRole("ADMIN", "INVENTORY_MANAGER", "STORE_MANAGER"), createTransfer);
 router.post(
   "/:transferId/advance",
   authenticate,
-  requireRole("ADMIN", "STORE_MANAGER"),
+  requireRole("ADMIN", "INVENTORY_MANAGER", "STORE_MANAGER"),
   advanceTransferStatus
 );
 

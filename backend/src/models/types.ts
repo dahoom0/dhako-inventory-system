@@ -14,7 +14,7 @@ export interface User {
   name: string;
   email: string;
   passwordHash: string;
-  role: "ADMIN" | "STORE_MANAGER" | "BRANCH_MANAGER" | "BRANCH_STAFF";
+  role: "ADMIN" | "INVENTORY_MANAGER" | "STORE_MANAGER" | "BRANCH_MANAGER" | "BRANCH_STAFF";
   locationId: string | null; // null = Admin (all locations)
   createdAt: Date;
   updatedAt: Date;
@@ -31,6 +31,22 @@ export interface Product {
   sellPerCtn: number;
   minStockCtn: number;
   status: "ACTIVE" | "INACTIVE";
+  createdAt: Date;
+  updatedAt: Date;
+  // Optional inventory data per location
+  inventory_by_location?: {
+    location_id: string;
+    location_name: string;
+    location_type: string;
+    quantity_ctns: number;
+    quantity_units: number;
+    cost_value: number;
+  }[];
+}
+
+export interface Category {
+  id: string;
+  name: string;
   createdAt: Date;
   updatedAt: Date;
 }

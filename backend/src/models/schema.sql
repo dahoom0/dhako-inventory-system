@@ -10,8 +10,14 @@ CREATE TABLE locations (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name        TEXT NOT NULL,
   type        TEXT NOT NULL CHECK (type IN ('WAREHOUSE', 'BRANCH')),
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  status      TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE')),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Unique constraint: active locations must have unique names
+CREATE UNIQUE INDEX idx_locations_name_active ON locations(name, status) WHERE status = 'ACTIVE';
+CREATE INDEX idx_locations_status ON locations(status);
 
 -- ── Users & roles ─────────────────────────────────────────────────────────────
 CREATE TABLE users (
@@ -55,6 +61,16 @@ CREATE TABLE products (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ── Categories ────────────────────────────────────────────────────────────────
+CREATE TABLE categories (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        TEXT NOT NULL UNIQUE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_categories_name ON categories(name);
 
 -- ── Stock movements (append-only ledger) ──────────────────────────────────────
 -- inventory = SUM of all movements per product/location

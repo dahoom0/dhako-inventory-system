@@ -20,4 +20,4 @@ export function requireRole(...roles: Role[]) {
 
 export const isAdmin         = requireRole("ADMIN");
 export const isAdminOrStore  = requireRole("ADMIN", "STORE_MANAGER");
-export const isManager       = requireRole("ADMIN", "STORE_MANAGER", "BRANCH_MANAGER");
+export const isManager       = requireRole("ADMIN", "INVENTORY_MANAGER", "STORE_MANAGER", "BRANCH_MANAGER");

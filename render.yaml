@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: dhako-app
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+
+    # Build-time args — Render sets VITE_API_URL to your service URL
+    # so the frontend bundle points to the right backend
+    dockerBuildArgs:
+      VITE_API_URL: https://dhako-app.onrender.com   # ← update this to your actual Render URL after first deploy
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: DATABASE_URL
+        fromDatabase:
+          name: dhako-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true          # Render auto-generates a secure random value
+      - key: FRONTEND_URL
+        value: https://dhako-app.onrender.com   # ← update this too
+
+    healthCheckPath: /api/v1/auth/me
+
+databases:
+  - name: dhako-db
+    plan: free
+    databaseName: dhako
+    user: dhako_user

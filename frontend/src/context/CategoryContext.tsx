@@ -1,64 +1,97 @@
-import React, { createContext, useContext, useState, ReactNode, useCallback } from "react";
+import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect } from "react";
+import { categoryApi } from "@/utils/api";
 
 export interface Category {
   id: string;
   name: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 interface CategoryContextType {
   categories: Category[];
-  addCategory: (name: string) => void;
-  updateCategory: (id: string, name: string) => void;
-  deleteCategory: (id: string) => void;
+  addCategory: (name: string) => Promise<void>;
+  updateCategory: (id: string, name: string) => Promise<void>;
+  deleteCategory: (id: string) => Promise<void>;
   getCategoryName: (id: string) => string;
   getCategory: (id: string) => Category | undefined;
+  isLoading: boolean;
+  error: string | null;
+  refreshCategories: () => Promise<void>;
 }
 
 const CategoryContext = createContext<CategoryContextType | undefined>(undefined);
 
-// Mock initial categories
-const INITIAL_CATEGORIES: Category[] = [
-  { id: "cat_1", name: "Beverages", createdAt: "2026-01-01" },
-  { id: "cat_2", name: "Food", createdAt: "2026-01-01" },
-  { id: "cat_3", name: "Snacks", createdAt: "2026-01-01" },
-  { id: "cat_4", name: "Cooking", createdAt: "2026-01-01" },
-  { id: "cat_5", name: "Household", createdAt: "2026-01-01" },
-  { id: "cat_6", name: "Personal Care", createdAt: "2026-01-01" },
-  { id: "cat_7", name: "Electronics", createdAt: "2026-01-01" },
-  { id: "cat_8", name: "Other", createdAt: "2026-01-01" },
-];
-
 export const CategoryProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const addCategory = useCallback((name: string) => {
-    if (categories.some(cat => cat.name.toLowerCase() === name.toLowerCase())) {
-      throw new Error("Category already exists");
-    }
-    const newCategory: Category = {
-      id: `cat_${Date.now()}`,
-      name,
-      createdAt: new Date().toISOString(),
-    };
-    setCategories((prev) => [...prev, newCategory]);
-  }, [categories]);
+  // Fetch categories from backend on mount
+  useEffect(() => {
+    refreshCategories();
+  }, []);
 
-  const updateCategory = useCallback((id: string, name: string) => {
-    if (categories.some(cat => cat.id !== id && cat.name.toLowerCase() === name.toLowerCase())) {
-      throw new Error("Category name already exists");
+  const refreshCategories = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      console.log("📦 Fetching categories from backend...");
+      const response = await categoryApi.getCategories();
+      const categoriesData = Array.isArray(response) ? response : (response?.data || []);
+      console.log("✅ Categories loaded:", categoriesData.length);
+      setCategories(categoriesData);
+    } catch (err) {
+      console.error("❌ Failed to fetch categories from backend:", err);
+      setError("Failed to load categories");
+      setCategories([]);
+    } finally {
+      setIsLoading(false);
     }
-    setCategories((prev) =>
-      prev.map((cat) => (cat.id === id ? { ...cat, name } : cat))
-    );
-  }, [categories]);
+  }, []);
 
-  const deleteCategory = useCallback((id: string) => {
-    if (categories.length <= 1) {
-      throw new Error("Cannot delete the last category");
+  const addCategory = useCallback(async (name: string) => {
+    try {
+      setError(null);
+      const response = await categoryApi.createCategory(name);
+      const newCategory = response?.data || response;
+      setCategories((prev) => [...prev, newCategory]);
+      console.log("✅ Category created:", newCategory.name);
+    } catch (err: any) {
+      const message = err.message || err.data?.error || "Failed to create category";
+      console.error("❌ Failed to create category:", message);
+      throw new Error(message);
     }
-    setCategories((prev) => prev.filter((cat) => cat.id !== id));
-  }, [categories]);
+  }, []);
+
+  const updateCategory = useCallback(async (id: string, name: string) => {
+    try {
+      setError(null);
+      const response = await categoryApi.updateCategory(id, name);
+      const updatedCategory = response?.data || response;
+      setCategories((prev) =>
+        prev.map((cat) => (cat.id === id ? { ...cat, ...updatedCategory } : cat))
+      );
+      console.log("✅ Category updated:", updatedCategory.name);
+    } catch (err: any) {
+      const message = err.message || err.data?.error || "Failed to update category";
+      console.error("❌ Failed to update category:", message);
+      throw new Error(message);
+    }
+  }, []);
+
+  const deleteCategory = useCallback(async (id: string) => {
+    try {
+      setError(null);
+      await categoryApi.deleteCategory(id);
+      setCategories((prev) => prev.filter((cat) => cat.id !== id));
+      console.log("✅ Category deleted");
+    } catch (err: any) {
+      const message = err.message || err.data?.error || "Failed to delete category";
+      console.error("❌ Failed to delete category:", message);
+      throw new Error(message);
+    }
+  }, []);
 
   const getCategoryName = useCallback(
     (id: string): string => {
@@ -84,6 +117,9 @@ export const CategoryProvider: React.FC<{ children: ReactNode }> = ({ children }
         deleteCategory,
         getCategoryName,
         getCategory,
+        isLoading,
+        error,
+        refreshCategories,
       }}
     >
       {children}
